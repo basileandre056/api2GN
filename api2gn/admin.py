@@ -7,7 +7,7 @@ from geonature.utils.env import db
 from api2gn.models import ParserModel
 
 
-class Api2GNAdmin(ModelView):
+class Api2GNAdmin(CruvedProtectedMixin, ModelView):
     module_code = "ADMIN"
     object_code = "PARSER"
     column_list = (
