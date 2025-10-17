@@ -302,7 +302,7 @@ class GBIFParser(JSONParser):
         "observers": "recordedBy",
         "determiner": "recordedBy",
         "place_name": "verbatimLocality",
-        "entity_source_pk_value": "catalogNumber",
+        "entity_source_pk_value": "gbifID",
         "cd_nom": "cd_nom",
         "id_nomenclature_sex": "sex",
         "id_nomenclature_life_stage": "lifeStage",
