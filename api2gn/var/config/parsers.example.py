@@ -52,9 +52,8 @@ class GBIFParserInaturalist(GBIFParser):
         "limit": limit,
         "year": 2008,
     }
-
+    create_dataset = True
     # pass constant from missing value in my API
     constant_fields = {
         "id_source": 1,  # a creer ou a récupérer depuis metadonnées
-        "id_dataset": 450,  # Creer JDD test, a terme récupérer les métadonnées et creer JDD en auto
     }

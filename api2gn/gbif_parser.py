@@ -12,6 +12,7 @@ from geonature.utils.env import db
 
 from apptax.taxonomie.models import TaxrefLiens
 
+from geonature.core.gn_meta.models import TDatasets, TAcquisitionFramework
 
 # https://dwc.tdwg.org/list/#dwc_occurrenceStatus
 # http://rs.tdwg.org/dwc/terms/lifeStage
@@ -20,6 +21,13 @@ class GBIFParser(JSONParser):
     srid = 4326
     progress_bar = False  # useless multiple single request
     row_data = {}
+    create_dataset = False  # Indicate if dataset should be created
+    af_id = None  # The id of the acquisition framework. If not set, it will be created with name GBIF
+    datasets_id = (
+        {}
+    )  # A dict to store dataset id. Key is the uuid and value is the dataset id. Avoid multiple request
+
+    # Default GBIF api filters for occurrence
     api_filters = {
         "occurrenceStatus": "PRESENT",
         "basisOfRecord": [
@@ -31,7 +39,7 @@ class GBIFParser(JSONParser):
         "hasGeospatialIssue": False,
         "hasCoordinate": True,
     }
-
+    # Mapping between GBIF values and sinp nomenclature values
     cd_nomenclature_mapping = {
         "lifeStage": {
             "larva": "6",
@@ -77,16 +85,98 @@ class GBIFParser(JSONParser):
                     datetime.now().strftime("%Y-%m-%d"),
                 ]
             )
-        self.occurrence_id = None  # Initialisation
         self.data = None
-        self.organization_data = None
-        self.dataset_data = None
-        self.species_data = None
-        self.subdivisions_data = None
 
         self.validate_maping()
+        if not "id_dataset" in self.constant_fields and not self.create_dataset:
+            click.secho(
+                f"You need to set create_dataset=True or set id_dataset in constant_fields. No data will be imported",
+                fg="red",
+            )
+        else:
+            # get or create default acquisition framework
+            # if not default value is set
+            if self.create_dataset and not self.af_id:
+                self.af_id = self._get_or_create_af()
 
-        self.fetch_occurrence_ids_search()
+            self.fetch_occurrence_ids_search()
+
+    def _test_dataset_uuid(self, uuid):
+        if uuid in self.datasets_id:
+            return self.datasets_id[uuid]
+
+        dataset = db.session.execute(
+            select(TDatasets).where(TDatasets.unique_dataset_id == uuid).limit(1)
+        ).scalar()
+        if not dataset:
+            gbif_dataset = self._fetch_dataset_data()
+            dataset = self._create_dataset(gbif_dataset)
+        self.datasets_id[uuid] = dataset.id_dataset
+        return self.datasets_id[uuid]
+
+    def _create_dataset(self, gbif_dataset):
+        """
+        Create a dataset from a GBIF dataset.
+
+        Parameters
+        ----------
+        gbif_dataset : dict
+            A dataset from the GBIF API.
+
+        Returns
+        -------
+        dataset : TDatasets
+            The created dataset.
+        """
+        # create dataset
+        dataset = TDatasets(
+            unique_dataset_id=gbif_dataset["key"],
+            dataset_name=gbif_dataset["title"],
+            dataset_shortname=gbif_dataset["title"],
+            dataset_desc=gbif_dataset["description"],
+            id_acquisition_framework=self.af_id,
+            marine_domain=False,
+            terrestrial_domain=False,
+        )
+        db.session.add(dataset)
+        click.secho(
+            f"Create dataset {dataset.dataset_name} ...",
+            fg="green",
+        )
+        db.session.commit()
+        return dataset
+
+    def _fetch_dataset_data(self):
+        dataset_key = self.data.get("datasetKey")
+        if dataset_key:
+            registry.datasets(limit=1)
+            return registry.datasets(uuid=dataset_key)
+        return None
+
+    def _get_or_create_af(self):
+        """
+        Get or create acquisition framework with name "GBIF".
+        If not exist, create it and commit in database.
+        Return acquisition framework id.
+        """
+        af = db.session.execute(
+            select(TAcquisitionFramework)
+            .where(TAcquisitionFramework.acquisition_framework_name == "GBIF")
+            .limit(1)
+        ).scalar()
+
+        if af is None:
+            af = TAcquisitionFramework(
+                acquisition_framework_name="GBIF",
+                acquisition_framework_desc="GBIF af",
+            )
+            db.session.add(af)
+            click.secho(
+                f"Create acquisition framework  {af.acquisition_framework_name} ...",
+                fg="green",
+            )
+            db.session.commit()
+        return af.id_acquisition_framework
 
     def _get_cd_nomenclature(self, field, value):
         if value:
@@ -123,27 +213,6 @@ class GBIFParser(JSONParser):
             self.row_data = self.row_data | search_occurence
         if response["endOfRecords"] == False:
             self.gbif_search_occurence(limit=limit, offset=limit + offset)
-
-    def fetch_occurrence_data(self, occurrence_id):
-        return self.row_data[occurrence_id]
-
-    def fetch_organization_data(self):
-        organization_key = self.data.get("publishingOrgKey")
-        if organization_key:
-            return registry.organizations(uuid=organization_key)
-        return {}
-
-    def fetch_dataset_data(self):
-        dataset_key = self.data.get("datasetKey")
-        if dataset_key:
-            return registry.datasets(uuid=dataset_key)
-        return {}
-
-    def fetch_subdivisions_data(self):
-        url = "https://api.gbif.org/v1/geocode/gadm/FRA.3_1/subdivisions"
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()
 
     def fetch_taxref_cd_nom(self):
         try:
@@ -202,21 +271,23 @@ class GBIFParser(JSONParser):
             for key in nomeclature_key:
                 self.data[key] = self._get_cd_nomenclature(key, self.data.get(key))
 
-            # self.organization_data = self.fetch_organization_data()
-            # self.dataset_data = self.fetch_dataset_data()
-            # self.subdivisions_data = self.fetch_subdivisions_data()
-
             if self.data["cd_nom"]:
+                if not "id_dataset" in self.data and self.create_dataset:
+                    id_dataset = self._test_dataset_uuid(self.data["datasetKey"])
+                    self.data.update({"id_dataset": id_dataset})
+
                 if "eventDate" in self.data:
                     try:
                         date_min, date_max = generate_date_range(self.data["eventDate"])
                         self.data.update({"dateStart": date_min, "dateEnd": date_max})
-                        yield self.data
+
                     except ValueError as e:
                         click.secho(
                             f"[data #{self.occurrence_id}] Could not get properly occurence date: {e}",
                             fg="red",
                         )
+                    yield None
+                yield self.data
             else:
                 yield None
 
@@ -236,4 +307,5 @@ class GBIFParser(JSONParser):
         "id_nomenclature_sex": "sex",
         "id_nomenclature_life_stage": "lifeStage",
         "id_nomenclature_observation_status": "occurrenceStatus",
+        "id_dataset": "id_dataset",
     }
