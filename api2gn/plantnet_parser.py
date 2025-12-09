@@ -120,23 +120,29 @@ class PlantNetParser(JSONParser):
         # 1. SOURCE (SQL brut)
         # -------------------
         q_source = db.session.execute(text("""
-            SELECT id_source FROM gn_meta.t_sources
+            SELECT id_source FROM gn_synthese.t_sources
             WHERE name_source = 'Pl@ntNet'
         """)).fetchone()
 
         if q_source:
-            id_source = q_source.id_source
+            id_source = q_source[0]
             click.secho(f"✔ Source Pl@ntNet existante (id={id_source})", fg="blue")
         else:
-            res = db.session.execute(text("""
-                INSERT INTO gn_meta.t_sources (name_source, desc_source)
-                VALUES ('Pl@ntNet', 'Import API PlantNet')
-                RETURNING id_source
-            """))
-            id_source = res.fetchone().id_source
-            if not self.dry_run:
+            if self.dry_run:
+                id_source = -1
+                click.secho(
+                    "⚠ Dry-run : source 'Pl@ntNet' non créée (id_source=-1, pas d’écriture)",
+                    fg="yellow",
+                )
+            else:
+                res = db.session.execute(text("""
+                    INSERT INTO gn_synthese.t_sources (name_source, desc_source)
+                    VALUES ('Pl@ntNet', 'Import API PlantNet')
+                    RETURNING id_source
+                """))
+                id_source = res.fetchone()[0]
                 db.session.commit()
-            click.secho(f"✔ Source Pl@ntNet créée (id={id_source})", fg="green")
+                click.secho(f"✔ Source Pl@ntNet créée (id={id_source})", fg="green")
 
         # -------------------
         # 2. ACQUISITION FRAMEWORK (via modèle GN)
@@ -194,7 +200,6 @@ class PlantNetParser(JSONParser):
             f"✔ id_source={id_source}, id_dataset={dataset.id_dataset}",
             fg="yellow"
         )
-
     # ---------------------------------------------------------------------
     # API call
     # ---------------------------------------------------------------------
