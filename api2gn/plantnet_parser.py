@@ -73,7 +73,9 @@ class PlantNetParser(JSONParser):
 
 
 
-    srid = 4326
+    srid = 4326               # SRID source (PlantNet)
+    local_srid = 2975        # SRID de la base GeoNature (the_geom_local)
+
     progress_bar = False
 
     url = "https://my-api.plantnet.org/v3/dwc/occurrence/search"
