@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 
 from geonature.utils.env import db
 from geonature.core.gn_meta.models import TDatasets, TAcquisitionFramework
+
 # ⚠️ TSources N’EXISTE PAS en GN 2.13 → on utilisera SQL brut
 
 # Fallback TAXREF
@@ -69,6 +70,8 @@ def _resolve_cd_nom(row: Dict[str, Any]) -> Optional[int]:
 
 
 class PlantNetParser(JSONParser):
+
+
 
     srid = 4326
     progress_bar = False
