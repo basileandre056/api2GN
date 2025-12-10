@@ -71,6 +71,7 @@ def _resolve_cd_nom(row: Dict[str, Any]) -> Optional[int]:
 class PlantNetParser(JSONParser):
 
     srid = 4326
+    local_srid = 2975 
     progress_bar = False
 
     url = "https://my-api.plantnet.org/v3/dwc/occurrence/search"
