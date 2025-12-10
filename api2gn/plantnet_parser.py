@@ -72,7 +72,7 @@ def _resolve_cd_nom(row: Dict[str, Any]) -> Optional[int]:
 class PlantNetParser(JSONParser):
 
 
-
+    name = "PLANTNET_REUNION"
     srid = 4326               # SRID source (PlantNet)
     local_srid = 2975        # SRID de la base GeoNature (the_geom_local)
 
