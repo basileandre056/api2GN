@@ -38,6 +38,43 @@ GeoNature affichera :
 
 ---
 
+### 4. Utilisation avec paramètres dynamiques (polygone / espèces / dates)
+
+
+Le parser peut recevoir des paramètres au moment de l’exécution, sans modifier les fichiers Python.
+
+Exemple d’appel avec paramètres dynamiques :
+
+```bash
+
+geonature parser run PLANTNET_REUNION --args '{"geometry": {...}, "scientific_names": ["Iris japonica"], "min_event_date":"2024-01-01"}'
+
+```
+
+Paramètres disponibles :
+
+| Paramètre          | Type             | Description                            |
+| ------------------ | ---------------- | -------------------------------------- |
+| `geometry`         | GeoJSON Polygon  | Zone d’interrogation de l’API PlantNet |
+| `scientific_names` | liste de chaînes | Liste d’espèces ciblées                |
+| `min_event_date`   | chaîne ISO       | Date minimale                          |
+| `max_event_date`   | chaîne ISO       | Date maximale                          |
+
+Fonctionnement :
+
+Si un paramètre est absent → le parser utilise automatiquement la valeur par défaut définie dans parsers_plantnet.py.
+
+Si tous les paramètres sont fournis → aucun défaut n'est utilisé.
+
+Exemple minimal (seulement les dates) :
+
+```bash
+geonature parser run PLANTNET_REUNION --args '{"min_event_date":"2023-01-01"}'
+
+
+```
+
+
 ## 🗺 Emprise géographique
 
 Le parser est configuré pour **La Réunion** via un polygone GeoJSON défini dans `parsers_plantnet.py`.

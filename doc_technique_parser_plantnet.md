@@ -168,4 +168,57 @@ Réimplémenter `get_geom()` si besoin.
 
 ---
 
+# 11. 🧩 Paramétrage dynamique des filtres (runtime_args)
+
+Le parser accepte désormais des paramètres dynamiques, passés via :
+
+```bash
+--args '{"clé":"valeur"}'
+
+```
+Fonctionnement interne
+
+Lors de l’instanciation :
+
+```bash
+def __init__(..., **runtime_args)
+
+```
+GeoNature transmet les paramètres via self.runtime_args
+
+Le parser combine :
+
+les valeurs par défaut définies dans la sous-classe (parsers_plantnet.py)
+
+les arguments fournis au runtime
+
+Méthode utilisée :
+
+```bash
+_apply_runtime_args()
+
+```
+Elle applique dans l’ordre :
+
+valeur dynamique si fournie
+
+sinon valeur par défaut
+
+Cela garantit :
+
+aucune erreur si un paramètre est manquant
+
+comportement identique à la configuration statique si aucun argument dynamique n’est fourni
+
+Paramètres supportés :
+
+```bash
+geometry
+scientific_names
+min_event_date
+max_event_date
+
+```
+
+
 Fin de la fiche technique développeurs.

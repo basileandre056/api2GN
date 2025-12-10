@@ -247,9 +247,27 @@ class PlantNetParser(JSONParser):
         "basisOfRecord": "basisOfRecord_norm",
     }
 
-    def __init__(self, dry_run=False):
+    def __init__(self, dry_run=False, **runtime_args):
         self.dry_run = dry_run
+    
+        # Récupération des args envoyés par GeoNature si pas dans **kwargs
+        runtime_args = getattr(self, "runtime_args", runtime_args)
+    
+        # 1) Stocke les valeurs par défaut
+        self._defaults = {
+            "geometry": getattr(self, "geometry", None),
+            "scientific_names": getattr(self, "scientific_names", []),
+            "min_event_date": getattr(self, "min_event_date", None),
+            "max_event_date": getattr(self, "max_event_date", None),
+        }
+    
+        # 2) Appelle l’init parent AVANT d’écraser les valeurs
         super().__init__()
+    
+        # 3) Applique les arguments dynamiques APRES les initialisations internes
+        self._apply_runtime_args(runtime_args)
+    
+        # 4) Crée automatiquement source / framework / dataset
         self._auto_setup_metadata()
 
     # ---------------------------------------------------------------------
@@ -408,6 +426,29 @@ class PlantNetParser(JSONParser):
                 "associatedMedia": medium_url,     # image plantnet
                 "basisOfRecord_norm": bor_norm,
             }
+
+
+    def _apply_runtime_args(self, args):
+        """
+        Met en place les paramètres dynamiques.
+        Si un paramètre n'est pas fourni => on garde la valeur par défaut.
+        """
+        args = args or {}
+
+        # geometry
+        self.geometry = args.get("geometry", self._defaults["geometry"])
+
+        # scientific names (toujours liste)
+        self.scientific_names = args.get(
+            "scientific_names", 
+            self._defaults["scientific_names"]
+        )
+
+        # dates
+        self.min_event_date = args.get("min_event_date", self._defaults["min_event_date"])
+        self.max_event_date = args.get("max_event_date", self._defaults["max_event_date"])
+
+
 
     @property
     def total(self):
