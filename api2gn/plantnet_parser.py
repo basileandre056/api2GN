@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+#api2gn/plantnet_parser.py
+
+
 import json
 from typing import Dict, Any, List, Optional
 
