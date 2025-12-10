@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-#api2gn/plantnet_parser.py
-
+# api2gn/plantnet_parser.py
 
 import json
+import re
 from typing import Dict, Any, List, Optional
 
 import click
@@ -12,72 +12,64 @@ from geoalchemy2.shape import from_shape
 from sqlalchemy import select, text
 
 from geonature.utils.env import db
+from geonature.utils.config import config as gn_config
 from geonature.core.gn_meta.models import TDatasets, TAcquisitionFramework
 
-
-import re
-
+from api2gn.parsers import JSONParser
 
 
+# =============================================================================
+# CONFIGURATION API2GN – Chargée exactement comme Quadrige
+# =============================================================================
 
-# ⚠️ TSources N’EXISTE PAS en GN 2.13 → on utilisera SQL brut
+def load_api2gn_config():
+    cfg = gn_config.get("API2GN")
+    if not cfg:
+        click.secho(
+            "[API2GN] ⚠ Aucune configuration chargée (api2gn_config.toml absent).",
+            fg="yellow"
+        )
+        return {}
+    return cfg
 
-# Fallback TAXREF
+
+CFG = load_api2gn_config()
+
+
+# =============================================================================
+# TAXREF RESOLUTION (optimisée + cache)
+# =============================================================================
+
 try:
     from apptax.taxonomie.models import Taxref
 except ImportError:
     Taxref = None
 
-
-# ============================================================
-#  CACHE pour éviter de refaire 200 requêtes identiques
-# ============================================================
-_CD_NOM_CACHE = {}
+_CD_NOM_CACHE: Dict[str, Optional[int]] = {}
 
 
 def normalize_scientific_name(name: str) -> str:
-    """
-    Simplifie un nom scientifique :
-    - supprime les auteurs (Roxb., Thunb., …)
-    - supprime subsp., var., ssp., forma
-    - garde uniquement 'Genre espece'
-    """
     if not name:
         return name
-
-    # Supprime sous-espèces, variétés etc.
     name = re.sub(r"\b(subsp\.|var\.|ssp\.|forma)\b.*", "", name, flags=re.IGNORECASE)
-
     parts = name.split()
-    if len(parts) >= 2:
-        return f"{parts[0]} {parts[1]}"
-
-    return name
+    return f"{parts[0]} {parts[1]}" if len(parts) >= 2 else name
 
 
-def resolve_cd_nom_taxref_local(scientific_name: str) -> Optional[int]:
-    """
-    Recherche TAXREF locale via Taxref.lb_nom normalisé.
-    """
+def resolve_cd_nom_local(name: str) -> Optional[int]:
     if Taxref is None:
         return None
-
-    sci_clean = normalize_scientific_name(scientific_name)
-
     try:
-        cd_nom = db.session.scalar(
-            select(Taxref.cd_nom).where(Taxref.lb_nom.ilike(sci_clean)).limit(1)
+        clean = normalize_scientific_name(name)
+        return db.session.scalar(
+            select(Taxref.cd_nom).where(Taxref.lb_nom.ilike(clean))
         )
-        return cd_nom
     except Exception as e:
-        click.secho(f"[PlantNet] Erreur TAXREF local : {e}", fg='red')
+        click.secho(f"[TAXREF local] Erreur : {e}", fg="red")
         return None
 
 
 def resolve_cd_nom_taxref_ld(name: str) -> Optional[int]:
-    """
-    Fallback TAXREF-LD en ligne (synonymes, auteurs…).
-    """
     try:
         r = requests.get(
             "https://taxref.mnhn.fr/api/taxa",
@@ -85,7 +77,7 @@ def resolve_cd_nom_taxref_ld(name: str) -> Optional[int]:
             timeout=4
         )
         data = r.json()
-        if isinstance(data, list) and len(data) > 0:
+        if isinstance(data, list) and len(data):
             return data[0].get("cd_nom")
     except Exception:
         pass
@@ -93,93 +85,43 @@ def resolve_cd_nom_taxref_ld(name: str) -> Optional[int]:
 
 
 def _resolve_cd_nom(row):
-    sci_raw = row.get("scientificName")
-    if not sci_raw:
+    sci = row.get("scientificName")
+    if not sci:
         return None
 
-    # --------------------------------------------------------
-    # 0) Vérifie le cache
-    # --------------------------------------------------------
-    if sci_raw in _CD_NOM_CACHE:
-        return _CD_NOM_CACHE[sci_raw]
+    if sci in _CD_NOM_CACHE:
+        return _CD_NOM_CACHE[sci]
 
-    # --------------------------------------------------------
-    # 1) Tentative TAXREF locale (nom normalisé)
-    # --------------------------------------------------------
-    cd_nom = resolve_cd_nom_taxref_local(sci_raw)
-    if cd_nom:
-        click.secho(f"[TAXREF local] {sci_raw} → cd_nom={cd_nom}", fg="green")
-        _CD_NOM_CACHE[sci_raw] = cd_nom
-        return cd_nom
+    # 1) Local
+    cd = resolve_cd_nom_local(sci)
+    if cd:
+        _CD_NOM_CACHE[sci] = cd
+        return cd
 
-    click.secho(f"[PlantNet] Aucun cd_nom local pour '{sci_raw}' → fallback TAXREF-LD", fg="yellow")
+    click.secho(f"[PlantNet] Aucun TAXREF local pour '{sci}' → fallback LD", fg="yellow")
 
-    # --------------------------------------------------------
-    # 2) Tentative TAXREF-LD (synonymes, variations d'auteurs…)
-    # --------------------------------------------------------
-    cd_nom_ld = resolve_cd_nom_taxref_ld(sci_raw)
-
-    if cd_nom_ld:
-        # Vérification que ce cd_nom existe dans TAXREF local
-        exists_local = db.session.scalar(
-            select(Taxref.cd_nom).where(Taxref.cd_nom == cd_nom_ld)
-        )
-
-        if exists_local:
-            click.secho(
-                f"[TAXREF-LD] {sci_raw} → cd_nom={cd_nom_ld} (présent en base locale)",
-                fg="cyan"
-            )
-            _CD_NOM_CACHE[sci_raw] = cd_nom_ld
-            return cd_nom_ld
+    # 2) TAXREF-LD
+    cd_ld = resolve_cd_nom_taxref_ld(sci)
+    if cd_ld:
+        exists = db.session.scalar(select(Taxref.cd_nom).where(Taxref.cd_nom == cd_ld))
+        if exists:
+            _CD_NOM_CACHE[sci] = cd_ld
+            return cd_ld
 
         click.secho(
-            f"[TAXREF-LD] cd_nom={cd_nom_ld} trouvé mais ABSENT dans taxonomie.taxref locale.",
+            f"[TAXREF-LD] cd_nom={cd_ld} trouvé mais ABSENT en base locale",
             fg="red"
         )
 
-    # --------------------------------------------------------
-    # 3) Aucun résultat acceptable → on abandonne proprement
-    # --------------------------------------------------------
-    click.secho(
-        f"[PlantNet] Aucun cd_nom trouvé pour '{sci_raw}' (local OR TAXREF-LD)",
-        fg="red"
-    )
-
-    _CD_NOM_CACHE[sci_raw] = None
+    _CD_NOM_CACHE[sci] = None
     return None
 
 
+# =============================================================================
+# BASIS OF RECORD NORMALISATION
+# =============================================================================
 
-
-def create_temp_cd_nom(name: str) -> Optional[int]:
-    """
-    Crée un 'fake' taxon dans TAXREF local (cd_nom négatif).
-    À n'activer que si tu veux absolument tout intégrer.
-    """
-    try:
-        res = db.session.execute(text("""
-            INSERT INTO taxonomie.taxref (lb_nom, nom_complet)
-            VALUES (:name, :name)
-            RETURNING cd_nom
-        """), {"name": name})
-        cd_nom = res.fetchone()[0]
-        db.session.commit()
-        return cd_nom
-    except Exception as e:
-        click.secho(f"[PlantNet] Impossible de créer cd_nom temporaire : {e}", fg="red")
-        return None
-
-
-
-
-
-from api2gn.parsers import JSONParser
-
-# -------------------------------------------------------------------
-# Normalisation basisOfRecord
-# -------------------------------------------------------------------
-BASIS_OF_RECORD_MAP: Dict[str, str] = {
+BASIS_OF_RECORD_MAP = {
     "human_observation": "HUMAN_OBSERVATION",
     "observation": "OBSERVATION",
     "machine_observation": "MACHINE_OBSERVATION",
@@ -192,54 +134,32 @@ BASIS_OF_RECORD_MAP: Dict[str, str] = {
 }
 
 
-def _build_observers(row: Dict[str, Any]) -> Optional[str]:
+def _build_observers(row):
     rights = row.get("rightsHolder")
     user_id = row.get("user_id")
     if rights and user_id:
         return f"{rights} ({user_id})"
-    if rights:
-        return rights
-    if user_id:
-        return str(user_id)
-    return None
+    return rights or (str(user_id) if user_id else None)
 
 
+# =============================================================================
+# PARSER PLANTNET – VERSION DYNAMIQUE VIA CONFIG
+# =============================================================================
 
 class PlantNetParser(JSONParser):
+    """
+    Version entièrement dynamique : URL, API KEY, mapping, géométrie,
+    listes d'espèces, dates… tout vient du fichier TOML.
+    """
 
-
-    name = "PLANTNET_REUNION"
-    srid = 4326               # SRID source (PlantNet)
-    local_srid = 2975        # SRID de la base GeoNature (the_geom_local)
-
+    name = "PLANTNET_GENERIC"
+    srid = 4326
+    local_srid = 2975
     progress_bar = False
 
-    url = "https://my-api.plantnet.org/v3/dwc/occurrence/search"
-    API_KEY = "2b10IJGxpcJr54FjXELjEVJI1O"
-
-    geometry: Optional[Dict[str, Any]] = None
-    scientific_names: List[str] = []
-    min_event_date: Optional[str] = None
-    max_event_date: Optional[str] = None
-
-    mapping = {
-        "nom_cite": "scientificName",
-        "date_min": "eventDate",
-        "date_max": "eventDate",
-        "entity_source_pk_value": "id",
-    }
-
-    # Valeurs remplacées automatiquement par _auto_setup_metadata()
-    constant_fields = {
-        "id_source": None,
-        "id_dataset": None,
-        "count_min": 1,
-        "count_max": 1,
-    }
-
     dynamic_fields = {
-        "observers": _build_observers,
         "cd_nom": _resolve_cd_nom,
+        "observers": _build_observers,
     }
 
     additionnal_fields = {
@@ -247,135 +167,155 @@ class PlantNetParser(JSONParser):
         "basisOfRecord": "basisOfRecord_norm",
     }
 
+    constant_fields = {
+        "id_source": None,
+        "id_dataset": None,
+        "count_min": 1,
+        "count_max": 1,
+    }
+
     def __init__(self, dry_run=False, **runtime_args):
         self.dry_run = dry_run
-    
-        # Récupération des args envoyés par GeoNature si pas dans **kwargs
-        runtime_args = getattr(self, "runtime_args", runtime_args)
-    
-        # 1) Stocke les valeurs par défaut
-        self._defaults = {
-            "geometry": getattr(self, "geometry", None),
-            "scientific_names": getattr(self, "scientific_names", []),
-            "min_event_date": getattr(self, "min_event_date", None),
-            "max_event_date": getattr(self, "max_event_date", None),
+
+        cfg = CFG
+
+        # ------------------------------------------------------------------
+        # 1) CHARGEMENT CONFIG API
+        # ------------------------------------------------------------------
+        self.url = cfg.get("plantnet_api_url", "")
+        self.API_KEY = cfg.get("plantnet_api_key", "")
+
+        # ------------------------------------------------------------------
+        # 2) DEFAULT SPECIES
+        # ------------------------------------------------------------------
+        if cfg.get("plantnet_empty_species_list", False):
+            species = []
+        else:
+            species = cfg.get("example_species", [])
+
+        # ------------------------------------------------------------------
+        # 3) GEOMETRY PAR DEFAUT
+        # ------------------------------------------------------------------
+        geom_json = cfg.get("plantnet_geometry_coordinates_json", "[]")
+        try:
+            coords = json.loads(geom_json)
+        except Exception:
+            coords = []
+
+        self.geometry = {
+            "type": cfg.get("plantnet_geometry_type", "Polygon"),
+            "coordinates": coords,
         }
-    
-        # 2) Appelle l’init parent AVANT d’écraser les valeurs
+
+        # ------------------------------------------------------------------
+        # 4) DATES PAR DÉFAUT
+        # ------------------------------------------------------------------
+        self.scientific_names = species
+        self.min_event_date = cfg.get("plantnet_min_event_date", None)
+        self.max_event_date = cfg.get("plantnet_max_event_date", None)
+
+        # ------------------------------------------------------------------
+        # 5) MAPPING DYNAMIQUE (JSON string)
+        # ------------------------------------------------------------------
+        mapping_json = cfg.get("plantnet_mapping_json", "{}")
+        try:
+            self.mapping = json.loads(mapping_json)
+        except Exception:
+            click.secho("[API2GN] ⚠ Erreur parsing mapping_json", fg="red")
+            self.mapping = {}
+
+        # backup defaults for runtime override
+        self._defaults = {
+            "geometry": self.geometry,
+            "scientific_names": self.scientific_names,
+            "min_event_date": self.min_event_date,
+            "max_event_date": self.max_event_date,
+        }
+
         super().__init__()
-    
-        # 3) Applique les arguments dynamiques APRES les initialisations internes
+
+        # override with runtime args
         self._apply_runtime_args(runtime_args)
-    
-        # 4) Crée automatiquement source / framework / dataset
+
+        # autogenerate source + dataset
         self._auto_setup_metadata()
 
-    # ---------------------------------------------------------------------
-    # AUTO-CREATION SOURCE / FRAMEWORK / DATASET — VERSION GN 2.13
-    # ---------------------------------------------------------------------
-    def _auto_setup_metadata(self):
+    # =============================================================================
+    # AUTO CREATION METADATA GN
+    # =============================================================================
 
-        # -------------------
-        # 1. SOURCE (SQL brut)
-        # -------------------
-        q_source = db.session.execute(text("""
+    def _auto_setup_metadata(self):
+        # SOURCE
+        row = db.session.execute(text("""
             SELECT id_source FROM gn_synthese.t_sources
             WHERE name_source = 'Pl@ntNet'
         """)).fetchone()
 
-        if q_source:
-            id_source = q_source[0]
-            click.secho(f"✔ Source Pl@ntNet existante (id={id_source})", fg="blue")
+        if row:
+            id_source = row[0]
         else:
             if self.dry_run:
                 id_source = -1
-                click.secho(
-                    "⚠ Dry-run : source 'Pl@ntNet' non créée (id_source=-1, pas d’écriture)",
-                    fg="yellow",
-                )
             else:
-                res = db.session.execute(text("""
+                r = db.session.execute(text("""
                     INSERT INTO gn_synthese.t_sources (name_source, desc_source)
                     VALUES ('Pl@ntNet', 'Import API PlantNet')
                     RETURNING id_source
                 """))
-                id_source = res.fetchone()[0]
+                id_source = r.fetchone()[0]
                 db.session.commit()
-                click.secho(f"✔ Source Pl@ntNet créée (id={id_source})", fg="green")
 
-        # -------------------
-        # 2. ACQUISITION FRAMEWORK (via modèle GN)
-        # -------------------
-        af = db.session.scalar(
-            select(TAcquisitionFramework).where(
-                TAcquisitionFramework.acquisition_framework_name == "Pl@ntNet"
-            )
-        )
-
+        # ACQUISITION FRAMEWORK
+        af = db.session.scalar(select(TAcquisitionFramework).where(
+            TAcquisitionFramework.acquisition_framework_name == "Pl@ntNet"
+        ))
         if not af:
             af = TAcquisitionFramework(
                 acquisition_framework_name="Pl@ntNet",
-                acquisition_framework_desc="Cadre d'acquisition Pl@ntNet"
+                acquisition_framework_desc="Cadre d'acquisition automatisé PlantNet"
             )
             db.session.add(af)
             if not self.dry_run:
                 db.session.commit()
-            click.secho("✔ Framework Pl@ntNet créé", fg="green")
-        else:
-            click.secho(f"✔ Framework existant (id={af.id_acquisition_framework})", fg="blue")
 
-        # -------------------
-        # 3. DATASET (via modèle GN)
-        # -------------------
-        dataset = db.session.scalar(
-            select(TDatasets).where(
-                TDatasets.dataset_name == "Pl@ntNet – La Réunion"
-            )
-        )
+        # DATASET
+        dataset = db.session.scalar(select(TDatasets).where(
+            TDatasets.dataset_name == "Pl@ntNet – La Réunion"
+        ))
 
         if not dataset:
             dataset = TDatasets(
                 dataset_name="Pl@ntNet – La Réunion",
                 dataset_shortname="PlantNet974",
-                dataset_desc="Observations Pl@ntNet sur La Réunion",
+                dataset_desc="Observations Pl@ntNet La Réunion",
                 id_acquisition_framework=af.id_acquisition_framework,
                 terrestrial_domain=True,
-                marine_domain=False
             )
             db.session.add(dataset)
             if not self.dry_run:
                 db.session.commit()
-            click.secho("✔ Dataset créé", fg="green")
-        else:
-            click.secho(f"✔ Dataset existant (id={dataset.id_dataset})", fg="blue")
 
-        # -------------------
-        # 4. Mise à jour
-        # -------------------
         self.constant_fields["id_source"] = id_source
         self.constant_fields["id_dataset"] = dataset.id_dataset
 
-        click.secho(
-            f"✔ id_source={id_source}, id_dataset={dataset.id_dataset}",
-            fg="yellow"
-        )
-    # ---------------------------------------------------------------------
-    # API call
-    # ---------------------------------------------------------------------
+    # =============================================================================
+    # API CALL
+    # =============================================================================
+
     def _build_payload(self):
-        payload = {}
+        p = {}
         if self.scientific_names:
-            payload["scientificName"] = self.scientific_names
+            p["scientificName"] = self.scientific_names
         if self.geometry:
-            payload["geometry"] = self.geometry
+            p["geometry"] = self.geometry
         if self.min_event_date:
-            payload["minEventDate"] = self.min_event_date
+            p["minEventDate"] = self.min_event_date
         if self.max_event_date:
-            payload["maxEventDate"] = self.max_event_date
-        return payload
+            p["maxEventDate"] = self.max_event_date
+        return p
 
     def _call_api(self):
-        click.secho("[PlantNet] Appel API /dwc/occurrence/search", fg="blue")
+        click.secho("[PlantNet] Appel API", fg="blue")
 
         resp = requests.post(
             self.url,
@@ -385,16 +325,17 @@ class PlantNetParser(JSONParser):
         )
 
         if resp.status_code != 200:
-            click.secho(f"Erreur API : {resp.text[:200]}", fg="red")
+            click.secho(resp.text, fg="red")
             raise click.ClickException("Erreur API PlantNet")
 
         data = resp.json()
         self.root = data
         return data.get("results", []) or data.get("data", [])
 
-    # ---------------------------------------------------------------------
-    # Construction des objets ligne par ligne
-    # ---------------------------------------------------------------------
+    # =============================================================================
+    # ITERATION DES RESULTATS
+    # =============================================================================
+
     def get_geom(self, row):
         lat = row.get("decimalLatitude")
         lon = row.get("decimalLongitude")
@@ -403,14 +344,9 @@ class PlantNetParser(JSONParser):
         return from_shape(Point(lon, lat), srid=self.srid)
 
     def next_row(self, page=0):
-        results = self._call_api()
-        self.counter = 0
-
-        for rec in results:
-            self.counter += 1
-
+        for rec in self._call_api():
             media = rec.get("media") or []
-            medium_url = media[0].get("medium_url") if media else None
+            url = media[0].get("medium_url") if media else None
 
             bor_raw = (rec.get("basisOfRecord") or "").strip()
             bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
@@ -423,32 +359,21 @@ class PlantNetParser(JSONParser):
                 "decimalLongitude": rec.get("decimalLongitude"),
                 "rightsHolder": rec.get("rightsHolder"),
                 "user_id": (rec.get("user") or {}).get("id"),
-                "associatedMedia": medium_url,     # image plantnet
+                "associatedMedia": url,
                 "basisOfRecord_norm": bor_norm,
             }
 
+    # =============================================================================
+    # RUNTIME OVERRIDE
+    # =============================================================================
 
     def _apply_runtime_args(self, args):
-        """
-        Met en place les paramètres dynamiques.
-        Si un paramètre n'est pas fourni => on garde la valeur par défaut.
-        """
         args = args or {}
 
-        # geometry
         self.geometry = args.get("geometry", self._defaults["geometry"])
-
-        # scientific names (toujours liste)
-        self.scientific_names = args.get(
-            "scientific_names", 
-            self._defaults["scientific_names"]
-        )
-
-        # dates
+        self.scientific_names = args.get("scientific_names", self._defaults["scientific_names"])
         self.min_event_date = args.get("min_event_date", self._defaults["min_event_date"])
         self.max_event_date = args.get("max_event_date", self._defaults["max_event_date"])
-
-
 
     @property
     def total(self):
