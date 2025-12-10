@@ -96,6 +96,7 @@ example_species = [
 # 5. MAPPING DES CHAMPS (JSON STRING)
 ###############################################################################
 
+
 plantnet_mapping_json = """
 {
   "nom_cite": "scientificName",

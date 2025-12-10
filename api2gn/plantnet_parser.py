@@ -33,7 +33,6 @@ def load_api2gn_config():
     return cfg
 
 
-CFG = load_api2gn_config()
 
 
 # =============================================================================
@@ -177,7 +176,7 @@ class PlantNetParser(JSONParser):
     def __init__(self, dry_run=False, **runtime_args):
         self.dry_run = dry_run
 
-        cfg = CFG
+        cfg = load_api2gn_config()
 
         # ------------------------------------------------------------------
         # 1) CHARGEMENT CONFIG API
