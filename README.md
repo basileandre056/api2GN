@@ -29,6 +29,24 @@ Copier le fichier d'exemple `var/config/parsers.example.py` en `var/config/parse
 cp var/config/parsers.example.py var/config/parsers.py
 ```
 
+
+## Modifs apportées 
+
+####  dans geonature/backend/geonature/core/gn_synthese/models.py :
+
+j'ai remplacé 
+```bash`
+the_geom_local = deferred(DB.Column(Geometry("GEOMETRY")))
+``
+
+par 
+
+```bash`
+the_geom_local = deferred(DB.Column(Geometry("GEOMETRY", 2975)))
+``
+
+
+
 ## Commandes 
 
 * Lister les parsers disponibles
