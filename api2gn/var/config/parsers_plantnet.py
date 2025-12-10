@@ -3,7 +3,7 @@
 
 from api2gn.plantnet_parser import PlantNetParser
 
-# Polygone de La Réunion (repris de ton script)
+# Polygone de La Réunion 
 REUNION_POLYGON = {
     "type": "Polygon",
     "coordinates": [[
@@ -42,7 +42,7 @@ REUNION_POLYGON = {
     ]]
 }
 
-# Exemple de liste d'espèces (tu pourras ajuster)
+# Exemple de liste d'espèces 
 EXAMPLE_SPECIES = [
     "Thunbergia fragrans Roxb.",
     "Aciotis purpurascens (Aubl.) Triana",
@@ -64,6 +64,9 @@ class PlantNetReunion(PlantNetParser):
     # dates minimales/maximales
     min_event_date = "2024-01-01"
     max_event_date = None  # pas de limite
+
+    srid_local = 2975
+    srid_geographic = 4326
 
 
 # Tableau des parseurs à charger
