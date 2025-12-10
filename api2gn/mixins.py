@@ -49,12 +49,13 @@ class GeometryMixin:
     def fill_dict_with_geom(self, synthese_dict, wkb_geom):
         synthese_dict[self.geometry_col] = wkb_geom
         if self.geometry_col == "the_geom_local":
-            synthese_dict["the_geom_4326"] = self.build_geom_4326(wkb_geom, 2154)
-            synthese_dict["the_geom_point"] = self.build_centroid_4326_from_local(
-                wkb_geom, 2154
-            )
+
+
+            synthese_dict["the_geom_4326"] = self.build_geom_4326(wkb_geom, self.srid)
+            synthese_dict["the_geom_local"] = self.build_geom_local(wkb_geom, self.local_srid)
         elif self.geometry_col == "the_geom_4326":
-            synthese_dict["the_geom_local"] = self.build_geom_local(wkb_geom, 2154)
+            synthese_dict["the_geom_local"] = self.build_geom_local(wkb_geom, self.local_srid
+)
             synthese_dict["the_geom_point"] = self.build_centroid_from_4326(wkb_geom)
         return synthese_dict
 

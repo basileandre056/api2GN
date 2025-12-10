@@ -45,6 +45,12 @@ par
 the_geom_local = deferred(DB.Column(Geometry("GEOMETRY", 2975)))
 ``
 
+#### Résumé :
+| Élément           | SRID vu                                           |
+| ----------------- | ------------------------------------------------- |
+| Base PostGIS      | 2975                                              |
+| Parser            | 2975                                              |
+| Modèle SQLAlchemy | ❌ **SRID manquant → GN applique 2154 par défaut** |
 
 
 ## Commandes 
