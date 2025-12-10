@@ -14,6 +14,12 @@ from sqlalchemy import select, text
 from geonature.utils.env import db
 from geonature.core.gn_meta.models import TDatasets, TAcquisitionFramework
 
+
+import re
+
+
+
+
 # ⚠️ TSources N’EXISTE PAS en GN 2.13 → on utilisera SQL brut
 
 # Fallback TAXREF
@@ -21,6 +27,152 @@ try:
     from apptax.taxonomie.models import Taxref
 except ImportError:
     Taxref = None
+
+
+# ============================================================
+#  CACHE pour éviter de refaire 200 requêtes identiques
+# ============================================================
+_CD_NOM_CACHE = {}
+
+
+def normalize_scientific_name(name: str) -> str:
+    """
+    Simplifie un nom scientifique :
+    - supprime les auteurs (Roxb., Thunb., …)
+    - supprime subsp., var., ssp., forma
+    - garde uniquement 'Genre espece'
+    """
+    if not name:
+        return name
+
+    # Supprime sous-espèces, variétés etc.
+    name = re.sub(r"\b(subsp\.|var\.|ssp\.|forma)\b.*", "", name, flags=re.IGNORECASE)
+
+    parts = name.split()
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[1]}"
+
+    return name
+
+
+def resolve_cd_nom_taxref_local(scientific_name: str) -> Optional[int]:
+    """
+    Recherche TAXREF locale via Taxref.lb_nom normalisé.
+    """
+    if Taxref is None:
+        return None
+
+    sci_clean = normalize_scientific_name(scientific_name)
+
+    try:
+        cd_nom = db.session.scalar(
+            select(Taxref.cd_nom).where(Taxref.lb_nom.ilike(sci_clean)).limit(1)
+        )
+        return cd_nom
+    except Exception as e:
+        click.secho(f"[PlantNet] Erreur TAXREF local : {e}", fg='red')
+        return None
+
+
+def resolve_cd_nom_taxref_ld(name: str) -> Optional[int]:
+    """
+    Fallback TAXREF-LD en ligne (synonymes, auteurs…).
+    """
+    try:
+        r = requests.get(
+            "https://taxref.mnhn.fr/api/taxa",
+            params={"q": name},
+            timeout=4
+        )
+        data = r.json()
+        if isinstance(data, list) and len(data) > 0:
+            return data[0].get("cd_nom")
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_cd_nom(row):
+    sci_raw = row.get("scientificName")
+    if not sci_raw:
+        return None
+
+    # --------------------------------------------------------
+    # 0) Vérifie le cache
+    # --------------------------------------------------------
+    if sci_raw in _CD_NOM_CACHE:
+        return _CD_NOM_CACHE[sci_raw]
+
+    # --------------------------------------------------------
+    # 1) Tentative TAXREF locale (nom normalisé)
+    # --------------------------------------------------------
+    cd_nom = resolve_cd_nom_taxref_local(sci_raw)
+    if cd_nom:
+        click.secho(f"[TAXREF local] {sci_raw} → cd_nom={cd_nom}", fg="green")
+        _CD_NOM_CACHE[sci_raw] = cd_nom
+        return cd_nom
+
+    click.secho(f"[PlantNet] Aucun cd_nom local pour '{sci_raw}' → fallback TAXREF-LD", fg="yellow")
+
+    # --------------------------------------------------------
+    # 2) Tentative TAXREF-LD (synonymes, variations d'auteurs…)
+    # --------------------------------------------------------
+    cd_nom_ld = resolve_cd_nom_taxref_ld(sci_raw)
+
+    if cd_nom_ld:
+        # Vérification que ce cd_nom existe dans TAXREF local
+        exists_local = db.session.scalar(
+            select(Taxref.cd_nom).where(Taxref.cd_nom == cd_nom_ld)
+        )
+
+        if exists_local:
+            click.secho(
+                f"[TAXREF-LD] {sci_raw} → cd_nom={cd_nom_ld} (présent en base locale)",
+                fg="cyan"
+            )
+            _CD_NOM_CACHE[sci_raw] = cd_nom_ld
+            return cd_nom_ld
+
+        click.secho(
+            f"[TAXREF-LD] cd_nom={cd_nom_ld} trouvé mais ABSENT dans taxonomie.taxref locale.",
+            fg="red"
+        )
+
+    # --------------------------------------------------------
+    # 3) Aucun résultat acceptable → on abandonne proprement
+    # --------------------------------------------------------
+    click.secho(
+        f"[PlantNet] Aucun cd_nom trouvé pour '{sci_raw}' (local OR TAXREF-LD)",
+        fg="red"
+    )
+
+    _CD_NOM_CACHE[sci_raw] = None
+    return None
+
+
+
+
+def create_temp_cd_nom(name: str) -> Optional[int]:
+    """
+    Crée un 'fake' taxon dans TAXREF local (cd_nom négatif).
+    À n'activer que si tu veux absolument tout intégrer.
+    """
+    try:
+        res = db.session.execute(text("""
+            INSERT INTO taxonomie.taxref (lb_nom, nom_complet)
+            VALUES (:name, :name)
+            RETURNING cd_nom
+        """), {"name": name})
+        cd_nom = res.fetchone()[0]
+        db.session.commit()
+        return cd_nom
+    except Exception as e:
+        click.secho(f"[PlantNet] Impossible de créer cd_nom temporaire : {e}", fg="red")
+        return None
+
+
+
+
 
 from api2gn.parsers import JSONParser
 
@@ -51,26 +203,6 @@ def _build_observers(row: Dict[str, Any]) -> Optional[str]:
         return str(user_id)
     return None
 
-
-def _resolve_cd_nom(row: Dict[str, Any]) -> Optional[int]:
-    if Taxref is None:
-        return None
-
-    sci = row.get("scientificName")
-    if not sci:
-        return None
-
-    try:
-        cd_nom = db.session.scalar(
-            select(Taxref.cd_nom).where(Taxref.lb_nom.ilike(sci)).limit(1)
-        )
-        if not cd_nom:
-            click.secho(f"[PlantNet] Aucun cd_nom pour '{sci}'", fg="yellow")
-        return cd_nom
-
-    except Exception as e:
-        click.secho(f"[PlantNet] Erreur TAXREF : {e}", fg="red")
-        return None
 
 
 class PlantNetParser(JSONParser):
