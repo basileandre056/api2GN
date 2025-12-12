@@ -26,7 +26,7 @@ plantnet_empty_species_list = false
 
 # Dates minimales/maximales envoyées à l’API PlantNet
 plantnet_min_event_date = "2024-01-01"
-plantnet_max_event_date = ""    # vide = aucune limite
+plantnet_max_event_date = "2025-12-12"    # vide = aucune limite
 
 
 
