@@ -35,6 +35,22 @@ cp parsers_plantnet.py parsers.py
 
 # déplacer le fichier de config :
 cp ~/api2GN/api2gn_config.toml.example ~/geonature/config/api2gn_config.toml
+
+# Relancer géonature :
+sudo systemctl restart geonature geonature-worker
+
+# vérifier que le serveur tourne :
+sudo systemctl status geonature
+
+# recharger et lister les parseurs chargés dans api2gn/var/config/parsers.py
+geonature api2gn parser list
+
+
+# phase test
+geonature api2gn parser run PLANTNET_REUNION --dry-run
+
+# extraction réelle
+geonature api2gn parser run PLANTNET_REUNION
 ```
 
 ---
