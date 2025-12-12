@@ -10,11 +10,6 @@
     # Depuis le venv de GeoNature
     cd geonature
     source backend/venv/bin/activate
-    
-    # depuis le répertoire API2GN
-    pip install .    
-    pip install -e .
-    -> as mode dev
 
     # Ajout du module dans l'interface admin geonature
     geonature install-gn-module ~/api2GN  API2GN 
@@ -24,8 +19,9 @@
 
 ```
 
-Copier le fichier d'exemple `var/config/parsers.example.py` en `var/config/parsers.py`
-```
+Copier le fichier le parser qu'on souhaite charger : `var/config/parsers.example.py` en `var/config/parsers.py`
+Par exemple pour le parser de pl@ntnet : `var/config/parsers_plantnet.py` en `var/config/parsers.py`
+```bash
 cp var/config/parsers.example.py var/config/parsers.py
 ```
 
@@ -34,7 +30,7 @@ cp var/config/parsers.example.py var/config/parsers.py
 
 ####  dans geonature/backend/geonature/core/gn_synthese/models.py :
 
-j'ai remplacé 
+modifié :
 ```bash`
 the_geom_local = deferred(DB.Column(Geometry("GEOMETRY")))
 ``

@@ -30,7 +30,7 @@ plantnet_api_key = "2b10IJGxpcJr54FjXELjEVJI1O"
 ###############################################################################
 
 # Si true → liste vide → API non filtrée
-# Si false → utilise example_species
+# Si false → utilise list_species
 plantnet_empty_species_list = false
 
 # Dates minimales/maximales envoyées à l’API PlantNet
@@ -89,10 +89,10 @@ plantnet_geometry_coordinates_json = """
 
 
 ###############################################################################
-# 4. LISTE D’ESPÈCES PAR DÉFAUT
+# 4. LISTE D’ESPÈCES A IMPORTER SI empty_species = false
 ###############################################################################
 
-example_species = [
+list_species = [
   "Thunbergia fragrans Roxb.",
   "Aciotis purpurascens (Aubl.) Triana",
   "Iris japonica Thunb.",
