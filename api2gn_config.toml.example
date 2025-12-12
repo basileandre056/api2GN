@@ -102,7 +102,6 @@ plantnet_mapping_json = """
   "nom_cite": "scientificName",
   "date_min": "eventDate",
   "date_max": "eventDate",
-  "entity_source_pk_value": "id",
-  "basisOfRecord": "basisOfRecord_norm"
+  "entity_source_pk_value": "id"
 }
 """

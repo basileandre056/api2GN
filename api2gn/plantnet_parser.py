@@ -162,9 +162,10 @@ class PlantNetParser(JSONParser):
     }
 
     additionnal_fields = {
-        "associatedMedia": "associatedMedia",
-        "basisOfRecord": "basisOfRecord_norm",
+        "associated_media": "associatedMedia",
+        "basis_of_record": "basisOfRecord_norm",
     }
+
 
     constant_fields = {
         "id_source": None,
