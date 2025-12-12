@@ -27,6 +27,14 @@ geonature install-gn-module ~/api2GN API2GN
 
 # Mise à jour de la base
 geonature db upgrade api2gn@head
+
+
+# choisir un parser a configurer : par exemple le parser plantnet
+cd ~/api2GN/api2gn/var/config/
+cp parsers_plantnet.py parsers.py
+
+# déplacer le fichier de config :
+cp ~/api2GN/api2gn_config.toml.example ~/geonature/config/api2gn_config.toml
 ```
 
 ---
