@@ -2,6 +2,15 @@
 # CONFIGURATION DU MODULE API2GN – PARSER PLANTNET
 ###############################################################################
 
+###############################################################################
+# TAXREF
+###############################################################################
+
+# strict    → rejette les lignes sans cd_nom
+# permissif → importe même sans cd_nom
+plantnet_taxref_mode = "strict"
+
+
 
 ###############################################################################
 # 1. PARAMÈTRES API PLANTNET
@@ -105,4 +114,5 @@ plantnet_mapping_json = """
   "entity_source_pk_value": "id"
 }
 """
+
 

@@ -151,13 +151,12 @@ class PlantNetParser(JSONParser):
     listes d'espèces, dates… tout vient du fichier TOML.
     """
 
-    name = "PLANTNET_GENERIC"
+    name = "PLANTNET"
     srid = 4326
     local_srid = 2975
     progress_bar = False
 
     dynamic_fields = {
-        "cd_nom": _resolve_cd_nom,
         "observers": _build_observers,
     }
 
@@ -177,6 +176,11 @@ class PlantNetParser(JSONParser):
     def __init__(self, dry_run=False, **runtime_args):
         self.dry_run = dry_run
 
+        #---- Initialisation des compteurs ------------------------------------
+        self.imported_rows = 0
+        self.rejected_rows = 0
+        self.rejected_no_cd_nom = 0
+
         cfg = load_api2gn_config()
 
         # ------------------------------------------------------------------
@@ -184,6 +188,17 @@ class PlantNetParser(JSONParser):
         # ------------------------------------------------------------------
         self.url = cfg.get("plantnet_api_url", "")
         self.API_KEY = cfg.get("plantnet_api_key", "")
+
+        # --------------- Taxref Mode --------------------------------------
+        self.taxref_mode = cfg.get("plantnet_taxref_mode", "strict")
+
+        if self.taxref_mode not in ("strict", "permissif"):
+            click.secho(
+                f"[API2GN] ⚠ plantnet_taxref_mode invalide ({self.taxref_mode}) → strict",
+                fg="yellow",
+            )
+            self.taxref_mode = "strict"
+
 
         # ------------------------------------------------------------------
         # 2) DEFAULT SPECIES
@@ -240,9 +255,13 @@ class PlantNetParser(JSONParser):
         # autogenerate source + dataset
         self._auto_setup_metadata()
 
+
+
     # =============================================================================
     # AUTO CREATION METADATA GN
     # =============================================================================
+    
+
 
     def _auto_setup_metadata(self):
         # SOURCE
@@ -331,6 +350,20 @@ class PlantNetParser(JSONParser):
         data = resp.json()
         self.root = data
         return data.get("results", []) or data.get("data", [])
+    
+    def print_summary(self):
+        if self.dry_run:
+            return
+        click.secho("\n[PlantNet] Résumé de l'import :", fg="cyan")
+        click.secho(f"  ✔ Importées : {self.imported_rows}", fg="green")
+        click.secho(f"  ✖ Rejetées  : {self.rejected_rows}", fg="red")
+
+        if self.rejected_no_cd_nom:
+            click.secho(
+                f"    ↳ sans cd_nom (mode {self.taxref_mode}) : {self.rejected_no_cd_nom}",
+                fg="yellow",
+            )
+
 
     # =============================================================================
     # ITERATION DES RESULTATS
@@ -344,24 +377,45 @@ class PlantNetParser(JSONParser):
         return from_shape(Point(lon, lat), srid=self.srid)
 
     def next_row(self, page=0):
-        for rec in self._call_api():
-            media = rec.get("media") or []
-            url = media[0].get("medium_url") if media else None
+        try :
+            for rec in self._call_api():
+                media = rec.get("media") or []
+                url = media[0].get("medium_url") if media else None
 
-            bor_raw = (rec.get("basisOfRecord") or "").strip()
-            bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
+                bor_raw = (rec.get("basisOfRecord") or "").strip()
+                bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
 
-            yield {
-                "id": rec.get("id"),
-                "scientificName": rec.get("scientificName"),
-                "eventDate": rec.get("eventDate") or rec.get("observedOn"),
-                "decimalLatitude": rec.get("decimalLatitude"),
-                "decimalLongitude": rec.get("decimalLongitude"),
-                "rightsHolder": rec.get("rightsHolder"),
-                "user_id": (rec.get("user") or {}).get("id"),
-                "associatedMedia": url,
-                "basisOfRecord_norm": bor_norm,
-            }
+                row = {
+                    "id": rec.get("id"),
+                    "scientificName": rec.get("scientificName"),
+                    "eventDate": rec.get("eventDate") or rec.get("observedOn"),
+                    "decimalLatitude": rec.get("decimalLatitude"),
+                    "decimalLongitude": rec.get("decimalLongitude"),
+                    "rightsHolder": rec.get("rightsHolder"),
+                    "user_id": (rec.get("user") or {}).get("id"),
+                    "associatedMedia": url,
+                    "basisOfRecord_norm": bor_norm,
+                }
+
+                # --------------------------------------------------
+                # Résolution cd_nom
+                # --------------------------------------------------
+                cd_nom = _resolve_cd_nom(row)
+
+                if cd_nom is None and self.taxref_mode == "strict":
+                    self.rejected_rows += 1
+                    self.rejected_no_cd_nom += 1
+                    continue
+
+                # permissif → on laisse passer
+                row["cd_nom"] = cd_nom
+
+                self.imported_rows += 1
+                yield row
+        finally:
+            self.print_summary()
+        
+        
 
     # =============================================================================
     # RUNTIME OVERRIDE
