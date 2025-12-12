@@ -206,7 +206,7 @@ class PlantNetParser(JSONParser):
         if cfg.get("plantnet_empty_species_list", False):
             species = []
         else:
-            species = cfg.get("example_species", [])
+            species = cfg.get("list_species", [])
 
         # ------------------------------------------------------------------
         # 3) GEOMETRY PAR DEFAUT

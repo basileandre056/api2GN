@@ -1,3 +1,5 @@
+Document de synthèse – non destiné à la configuration ou au développement
+
 # Résumé du Parser PlantNet -- Documentation Synthétique
 
 ## 🔍 Objectif général
