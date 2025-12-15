@@ -176,6 +176,7 @@ class PlantNetParser(JSONParser):
     def __init__(self, dry_run=False, **runtime_args):
         self.dry_run = dry_run
 
+
         #---- Initialisation des compteurs ------------------------------------
         self.imported_rows = 0
         self.rejected_rows = 0
@@ -188,6 +189,18 @@ class PlantNetParser(JSONParser):
         # ------------------------------------------------------------------
         self.url = cfg.get("plantnet_api_url", "")
         self.API_KEY = cfg.get("plantnet_api_key", "")
+
+        self.pages = cfg.get("plantnet_pages", 1)
+
+
+        try:
+            self.pages = int(self.pages)
+        except Exception:
+            self.pages = 1
+
+        if self.pages < 1:
+            self.pages = 1
+
 
         # --------------- Taxref Mode --------------------------------------
         self.taxref_mode = cfg.get("plantnet_taxref_mode", "strict")
@@ -321,25 +334,29 @@ class PlantNetParser(JSONParser):
     # API CALL
     # =============================================================================
 
-    def _build_payload(self):
-        p = {}
-        if self.scientific_names:
-            p["scientificName"] = self.scientific_names
-        if self.geometry:
-            p["geometry"] = self.geometry
-        if self.min_event_date:
-            p["minEventDate"] = self.min_event_date
-        if self.max_event_date:
-            p["maxEventDate"] = self.max_event_date
-        return p
+    def _build_payload(self, page: int):
+        payload = {
+            "page": page
+        }
 
-    def _call_api(self):
-        click.secho("[PlantNet] Appel API", fg="blue")
+        if self.scientific_names:
+            payload["scientificName"] = self.scientific_names
+        if self.geometry:
+            payload["geometry"] = self.geometry
+        if self.min_event_date:
+            payload["minEventDate"] = self.min_event_date
+        if self.max_event_date:
+            payload["maxEventDate"] = self.max_event_date
+
+        return payload
+
+    def _call_api(self, page: int):
+        click.secho(f"[PlantNet] Appel API (page {page})", fg="blue")
 
         resp = requests.post(
             self.url,
             params={"api-key": self.API_KEY},
-            json=self._build_payload(),
+            json=self._build_payload(page),
             timeout=(10, 90)
         )
 
@@ -348,8 +365,11 @@ class PlantNetParser(JSONParser):
             raise click.ClickException("Erreur API PlantNet")
 
         data = resp.json()
-        self.root = data
+        if page == 1:
+            self.root = data
         return data.get("results", []) or data.get("data", [])
+
+
     
     def print_summary(self):
         if self.dry_run:
@@ -376,45 +396,51 @@ class PlantNetParser(JSONParser):
             return None
         return from_shape(Point(lon, lat), srid=self.srid)
 
-    def next_row(self, page=0):
-        try :
-            for rec in self._call_api():
-                media = rec.get("media") or []
-                url = media[0].get("medium_url") if media else None
-
-                bor_raw = (rec.get("basisOfRecord") or "").strip()
-                bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
-
-                row = {
-                    "id": rec.get("id"),
-                    "scientificName": rec.get("scientificName"),
-                    "eventDate": rec.get("eventDate") or rec.get("observedOn"),
-                    "decimalLatitude": rec.get("decimalLatitude"),
-                    "decimalLongitude": rec.get("decimalLongitude"),
-                    "rightsHolder": rec.get("rightsHolder"),
-                    "user_id": (rec.get("user") or {}).get("id"),
-                    "associatedMedia": url,
-                    "basisOfRecord_norm": bor_norm,
-                }
-
-                # --------------------------------------------------
-                # Résolution cd_nom
-                # --------------------------------------------------
-                cd_nom = _resolve_cd_nom(row)
-
-                if cd_nom is None and self.taxref_mode == "strict":
-                    self.rejected_rows += 1
-                    self.rejected_no_cd_nom += 1
-                    continue
-
-                # permissif → on laisse passer
-                row["cd_nom"] = cd_nom
-
-                self.imported_rows += 1
-                yield row
+    def next_row(self):
+        try:
+            for page_num in range(1, self.pages + 1):
+                results = self._call_api(page=page_num)
+    
+                # arrêt si l’API ne renvoie plus rien
+                if not results:
+                    break
+                
+                for rec in results:
+                    media = rec.get("media") or []
+                    url = media[0].get("medium_url") if media else None
+    
+                    bor_raw = (rec.get("basisOfRecord") or "").strip()
+                    bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
+    
+                    row = {
+                        "id": rec.get("id"),
+                        "scientificName": rec.get("scientificName"),
+                        "eventDate": rec.get("eventDate") or rec.get("observedOn"),
+                        "decimalLatitude": rec.get("decimalLatitude"),
+                        "decimalLongitude": rec.get("decimalLongitude"),
+                        "rightsHolder": rec.get("rightsHolder"),
+                        "user_id": (rec.get("user") or {}).get("id"),
+                        "associatedMedia": url,
+                        "basisOfRecord_norm": bor_norm,
+                    }
+    
+                    # --------------------------------------------------
+                    # Résolution cd_nom
+                    # --------------------------------------------------
+                    cd_nom = _resolve_cd_nom(row)
+    
+                    if cd_nom is None and self.taxref_mode == "strict":
+                        self.rejected_rows += 1
+                        self.rejected_no_cd_nom += 1
+                        continue
+                    
+                    row["cd_nom"] = cd_nom
+                    self.imported_rows += 1
+                    yield row
+    
         finally:
             self.print_summary()
-        
+
         
 
     # =============================================================================

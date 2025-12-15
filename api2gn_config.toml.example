@@ -37,6 +37,12 @@ plantnet_empty_species_list = false
 plantnet_min_event_date = "2024-01-01"
 plantnet_max_event_date = "2025-12-12"    # vide = aucune limite
 
+# Nombre de pages PlantNet à importer
+# 1 = 100 résultats
+# 2 = 200 résultats
+# null ou absent = 1 page 
+plantnet_pages = 5
+
 
 
 ###############################################################################
