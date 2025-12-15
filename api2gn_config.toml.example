@@ -31,10 +31,10 @@ plantnet_api_key = "2b10IJGxpcJr54FjXELjEVJI1O"
 
 # Si true → liste vide → API non filtrée
 # Si false → utilise list_species
-plantnet_empty_species_list = false
+plantnet_empty_species_list = true
 
 # Dates minimales/maximales envoyées à l’API PlantNet
-plantnet_min_event_date = "2024-01-01"
+plantnet_min_event_date = ""
 plantnet_max_event_date = "2025-12-12"    # vide = aucune limite
 
 # Nombre de pages PlantNet à importer
