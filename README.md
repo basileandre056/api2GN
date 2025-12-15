@@ -61,7 +61,7 @@ Le parser Pl@ntNet est entièrement configurable via un fichier TOML
 (polygone, taxons, dates, mode strict TAXREF, paramètres API).
 
 📘 Documentation utilisateur complète :
-👉 https://github.com/basileandre056/app_plantnet/blob/main/documentation/USER_GUIDE.md
+👉 https://github.com/basileandre056/api2GN/blob/main/documentation/USER_GUIDE.md
 ---
 
 ## 🌿 Parser Pl@ntNet – Présentation
@@ -96,7 +96,7 @@ L’interprétation détaillée des sorties du parser
 (importées, rejetées, gestion du `cd_nom`, mode strict)
 est décrite dans la documentation utilisateur :
 
-👉 https://github.com/basileandre056/app_plantnet/blob/main/documentation/USER_GUIDE.md
+👉 https://github.com/basileandre056/api2GN/blob/main/documentation/USER_GUIDE.md
 
 ## 🛠 Développement de parsers
 
@@ -118,11 +118,11 @@ Les méthodes principales surchargables sont :
 
 ## 📚 Documentation associée
 
-- Documentation technique Pl@ntNet :  
-  https://github.com/basileandre056/app_plantnet/blob/main/documentation/TECHNICAL_DOC.md
+- Documentation technique :  
+  https://github.com/basileandre056/api2GN/blob/main/documentation/TECHNICAL_DOC.md
 
-- Documentation utilisateur Pl@ntNet :  
-  https://github.com/basileandre056/app_plantnet/blob/main/documentation/USER_GUIDE.md
+- Documentation utilisateur :  
+  https://github.com/basileandre056/api2GN/blob/main/documentation/USER_GUIDE.md
 
 
 ---
