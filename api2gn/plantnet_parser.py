@@ -193,6 +193,9 @@ class PlantNetParser(JSONParser):
         self.pages = cfg.get("plantnet_pages", 1)
 
 
+        # startTime PlantNet (pagination robuste)
+        self.start_time = None
+
         try:
             self.pages = int(self.pages)
         except Exception:
@@ -339,6 +342,9 @@ class PlantNetParser(JSONParser):
             "page": page
         }
 
+        if self.start_time is not None:
+            payload["startTime"] = self.start_time
+
         if self.scientific_names:
             payload["scientificName"] = self.scientific_names
         if self.geometry:
@@ -365,8 +371,21 @@ class PlantNetParser(JSONParser):
             raise click.ClickException("Erreur API PlantNet")
 
         data = resp.json()
-        if page == 1:
+
+        # page 0 → récupération du startTime
+        if page == 0:
+            self.start_time = data.get("startTime")
+            if self.start_time:
+                click.secho(
+                    f"[PlantNet] startTime verrouillé : {self.start_time}",
+                    fg="cyan"
+                )
+            return []
+        
+        # première page non vide → référence pour total()
+        if self.root is None:
             self.root = data
+        
         return data.get("results", []) or data.get("data", [])
 
 
@@ -398,6 +417,16 @@ class PlantNetParser(JSONParser):
 
     def next_row(self):
         try:
+            # 1️⃣ Page 0 → verrou temporel
+            self._call_api(page=0)
+
+            if not self.start_time:
+                click.secho(
+                    "[PlantNet] ⚠ startTime absent, pagination non sécurisée",
+                    fg="yellow"
+                )
+
+            # 2️⃣ Pages de données
             for page_num in range(1, self.pages + 1):
                 results = self._call_api(page=page_num)
     
