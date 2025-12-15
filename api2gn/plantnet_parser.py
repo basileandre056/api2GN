@@ -372,15 +372,22 @@ class PlantNetParser(JSONParser):
 
         data = resp.json()
 
-        # page 0 → récupération du startTime
-        if page == 0:
+        # 🔐 Capture du startTime sur la première réponse
+        if self.start_time is None:
             self.start_time = data.get("startTime")
             if self.start_time:
                 click.secho(
                     f"[PlantNet] startTime verrouillé : {self.start_time}",
                     fg="cyan"
                 )
-            return []
+
+        # Référence pour total()
+        if self.root is None:
+            self.root = data
+
+        return data.get("results", []) or data.get("data", [])
+
+        
         
         # première page non vide → référence pour total()
         if self.root is None:
@@ -417,20 +424,9 @@ class PlantNetParser(JSONParser):
 
     def next_row(self):
         try:
-            # 1️⃣ Page 0 → verrou temporel
-            self._call_api(page=0)
-
-            if not self.start_time:
-                click.secho(
-                    "[PlantNet] ⚠ startTime absent, pagination non sécurisée",
-                    fg="yellow"
-                )
-
-            # 2️⃣ Pages de données
             for page_num in range(1, self.pages + 1):
                 results = self._call_api(page=page_num)
     
-                # arrêt si l’API ne renvoie plus rien
                 if not results:
                     break
                 
@@ -453,9 +449,6 @@ class PlantNetParser(JSONParser):
                         "basisOfRecord_norm": bor_norm,
                     }
     
-                    # --------------------------------------------------
-                    # Résolution cd_nom
-                    # --------------------------------------------------
                     cd_nom = _resolve_cd_nom(row)
     
                     if cd_nom is None and self.taxref_mode == "strict":
@@ -469,6 +462,7 @@ class PlantNetParser(JSONParser):
     
         finally:
             self.print_summary()
+
 
         
 
