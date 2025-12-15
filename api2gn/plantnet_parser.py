@@ -432,8 +432,7 @@ class PlantNetParser(JSONParser):
                 if not results:
                     break
 
-                if self.root.get("endOfRecords") is True:
-                    break
+
 
                 for rec in results:
                     media = rec.get("media") or []
