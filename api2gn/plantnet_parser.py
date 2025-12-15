@@ -182,6 +182,8 @@ class PlantNetParser(JSONParser):
         self.rejected_rows = 0
         self.rejected_no_cd_nom = 0
 
+        self.root = None
+
         cfg = load_api2gn_config()
 
         # ------------------------------------------------------------------
@@ -426,17 +428,17 @@ class PlantNetParser(JSONParser):
         try:
             for page_num in range(1, self.pages + 1):
                 results = self._call_api(page=page_num)
-    
+
                 if not results:
                     break
-                
+
                 for rec in results:
                     media = rec.get("media") or []
                     url = media[0].get("medium_url") if media else None
-    
+
                     bor_raw = (rec.get("basisOfRecord") or "").strip()
                     bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
-    
+
                     row = {
                         "id": rec.get("id"),
                         "scientificName": rec.get("scientificName"),
@@ -448,18 +450,18 @@ class PlantNetParser(JSONParser):
                         "associatedMedia": url,
                         "basisOfRecord_norm": bor_norm,
                     }
-    
+
                     cd_nom = _resolve_cd_nom(row)
-    
+
                     if cd_nom is None and self.taxref_mode == "strict":
                         self.rejected_rows += 1
                         self.rejected_no_cd_nom += 1
                         continue
-                    
+
                     row["cd_nom"] = cd_nom
                     self.imported_rows += 1
                     yield row
-    
+
         finally:
             self.print_summary()
 
