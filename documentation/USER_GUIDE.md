@@ -108,6 +108,21 @@ Les dates sont appliquées côté API Pl@ntNet.
 
 ---
 
+
+### 2.4 Pagination
+
+```toml
+# Nombre de pages PlantNet à importer
+# 1 = 100 résultats
+# 2 = 200 résultats
+# null ou absent = 1 page 
+
+plantnet_pages = 5
+
+```
+
+---
+
 ### 2.4 Géométrie spatiale
 
 ```toml
