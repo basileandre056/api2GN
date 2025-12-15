@@ -349,8 +349,8 @@ class PlantNetParser(JSONParser):
 
         if self.scientific_names:
             payload["scientificName"] = self.scientific_names
-        if self.geometry:
-            payload["geometry"] = self.geometry
+        #if self.geometry:
+        #    payload["geometry"] = self.geometry
         if self.min_event_date:
             payload["minEventDate"] = self.min_event_date
         if self.max_event_date:
