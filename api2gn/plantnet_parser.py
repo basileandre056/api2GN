@@ -206,15 +206,10 @@ class PlantNetParser(JSONParser):
             click.secho(
                 "[PlantNet] ⚠ Nombre maximum d'import = 1000. "
                 "Traitement limité à 1000 occurrences.",
-                fg="orange",
+                fg="yellow",
                 bold=True
             )
             self.max_data = 1000
-
-      
-
-        
-
 
         # --------------- Taxref Mode --------------------------------------
         self.taxref_mode = cfg.get("plantnet_taxref_mode", "strict")
@@ -234,6 +229,15 @@ class PlantNetParser(JSONParser):
             species = []
         else:
             species = cfg.get("list_species", [])
+        if not species:
+            click.secho(
+            "[PlantNet] ⚠ ATTENTION : aucun filtre sur les espèces.\n"
+            "→ Toutes les observations de taxons seront importées.\n"
+            "→ Vérifiez la configuration avant de lancer l'import.",
+            fg="yellow",
+            bold=True
+        )
+
 
         # ------------------------------------------------------------------
         # 3) GEOMETRY PAR DEFAUT
@@ -282,6 +286,8 @@ class PlantNetParser(JSONParser):
         # autogenerate source + dataset
         self._auto_setup_metadata()
 
+        # Offset pour itération par blocs de 1000
+        self.offset = 0
 
 
     # =============================================================================
@@ -350,7 +356,8 @@ class PlantNetParser(JSONParser):
 
     def _build_payload(self):
         payload = {
-            "limit": self.max_data
+            "limit": self.max_data,
+            "offset": self.offset
         }
 
         if self.scientific_names:
@@ -362,16 +369,15 @@ class PlantNetParser(JSONParser):
         if self.max_event_date:
             payload["maxEventDate"] = self.max_event_date
 
-        # Si on veut réactiver le filtre géométrique :
-        # if self.geometry:
-        #     payload["geometry"] = self.geometry
+        if self.geometry:
+            payload["geometry"] = self.geometry
 
         return payload
 
 
     def _call_api(self):
         click.secho(
-            f"[PlantNet] Appel API (limit={self.max_data})",
+            f"[PlantNet] Appel API (limit={self.max_data}, offset={self.offset})",
             fg="blue"
         )
 
@@ -387,17 +393,18 @@ class PlantNetParser(JSONParser):
             raise click.ClickException("Erreur API PlantNet")
 
         data = resp.json()
-        self.root = data
+        if self.root is None:
+            self.root = data
 
         return data.get("results", []) or data.get("data", [])
-
-
 
     
     def print_summary(self):
         if self.dry_run:
             return
         click.secho("\n[PlantNet] Résumé de l'import :", fg="cyan")
+        click.secho(f"  ↳ Offset final atteint : {self.offset}",fg="cyan")
+
         click.secho(f"  ✔ Importées : {self.imported_rows}", fg="green")
         click.secho(f"  ✖ Rejetées  : {self.rejected_rows}", fg="red")
 
@@ -421,44 +428,58 @@ class PlantNetParser(JSONParser):
 
     def next_row(self):
         try:
-            results = self._call_api()
+            while True:
+                results = self._call_api()
+                nb_results = len(results)
 
-            for rec in results:
-                media = rec.get("media") or []
-                url = media[0].get("medium_url") if media else None
+                if not results:
+                    break
 
-                bor_raw = (rec.get("basisOfRecord") or "").strip()
-                bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
+                for rec in results:
+                    media = rec.get("media") or []
+                    url = media[0].get("medium_url") if media else None
 
-                row = {
-                    "id": rec.get("id"),
-                    "scientificName": rec.get("scientificName"),
-                    "eventDate": rec.get("eventDate") or rec.get("observedOn"),
-                    "decimalLatitude": rec.get("decimalLatitude"),
-                    "decimalLongitude": rec.get("decimalLongitude"),
-                    "rightsHolder": rec.get("rightsHolder"),
-                    "user_id": (rec.get("user") or {}).get("id"),
-                    "associatedMedia": url,
-                    "basisOfRecord_norm": bor_norm,
-                }
+                    bor_raw = (rec.get("basisOfRecord") or "").strip()
+                    bor_norm = BASIS_OF_RECORD_MAP.get(bor_raw.lower(), bor_raw)
 
-                cd_nom = _resolve_cd_nom(row)
+                    row = {
+                        "id": rec.get("id"),
+                        "scientificName": rec.get("scientificName"),
+                        "eventDate": rec.get("eventDate") or rec.get("observedOn"),
+                        "decimalLatitude": rec.get("decimalLatitude"),
+                        "decimalLongitude": rec.get("decimalLongitude"),
+                        "rightsHolder": rec.get("rightsHolder"),
+                        "user_id": (rec.get("user") or {}).get("id"),
+                        "associatedMedia": url,
+                        "basisOfRecord_norm": bor_norm,
+                    }
 
-                if cd_nom is None and self.taxref_mode == "strict":
-                    self.rejected_rows += 1
-                    self.rejected_no_cd_nom += 1
-                    continue
+                    cd_nom = _resolve_cd_nom(row)
 
-                row["cd_nom"] = cd_nom
-                self.imported_rows += 1
-                yield row
+                    if cd_nom is None and self.taxref_mode == "strict":
+                        self.rejected_rows += 1
+                        self.rejected_no_cd_nom += 1
+                        continue
 
+                    row["cd_nom"] = cd_nom
+                    self.imported_rows += 1
+                    yield row
+
+                # 🔁 Condition de poursuite
+                if nb_results < self.max_data:
+                    break
+
+                # ➕ On décale l’offset
+                self.offset += self.max_data
+                if self.offset > 1_000_000:
+                    click.secho(
+                        "[PlantNet] ⚠ Arrêt de sécurité (offset trop élevé)",
+                        fg="red",
+                        bold=True
+                    )
+                    break
         finally:
             self.print_summary()
-
-
-
-        
 
     # =============================================================================
     # RUNTIME OVERRIDE
