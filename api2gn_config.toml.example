@@ -34,14 +34,16 @@ plantnet_api_key = "2b10IJGxpcJr54FjXELjEVJI1O"
 plantnet_empty_species_list = true
 
 # Dates minimales/maximales envoyées à l’API PlantNet
-plantnet_min_event_date = ""
+plantnet_min_event_date = "2025-01-01"
 plantnet_max_event_date = "2025-12-12"    # vide = aucune limite
 
-# Nombre de pages PlantNet à importer
-# 1 = 100 résultats
-# 2 = 200 résultats
-# null ou absent = 1 page 
-plantnet_pages = 5
+###############################################################################
+# 2bis. LIMITE DE DONNÉES
+###############################################################################
+
+# Nombre maximum d'occurrences à récupérer (limit PlantNet)
+# page size = 100 → limit=1000 = 10 pages internes API
+plantnet_max_data = 1000
 
 
 
