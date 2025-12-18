@@ -19,15 +19,6 @@ from api2gn.parsers import JSONParser
 
 
 # =============================================================================
-# CONFIGURATION API2GN – Chargée exactement comme Quadrige
-# =============================================================================
-
-
-
-
-
-
-# =============================================================================
 # TAXREF RESOLUTION (optimisée + cache)
 # =============================================================================
 
@@ -125,16 +116,16 @@ BASIS_OF_RECORD_MAP = {
 }
 
 def load_api2gn_config():
-    cfg = gn_config.get("API2GN")
-    click.secho(f"[API2GN] gn_config keys = {list(gn_config.keys())}", fg="cyan")
-
+    cfg = gn_config.get("API2GN", {})
     if not cfg:
         click.secho(
             "[API2GN] ⚠ Aucune configuration chargée (api2gn_config.toml absent).",
             fg="yellow"
         )
-        return {}
+    else:
+        click.secho("[API2GN] Configuration chargée", fg="cyan", bold=True)
     return cfg
+
 
 
 
@@ -191,70 +182,24 @@ class PlantNetParser(JSONParser):
 
         cfg = load_api2gn_config()
 
-        # ------------------------------------------------------------------
-        # 1) CHARGEMENT CONFIG API
-        # ------------------------------------------------------------------
-        self.url = cfg.get("plantnet_api_url", "")
-        self.API_KEY = cfg.get("plantnet_api_key", "")
+        # --- API --------------------------------------------------------
+        self.url = cfg.get("plantnet_api_url")
+        self.API_KEY = cfg.get("plantnet_api_key")
 
-        cfg = gn_config.get("API2GN", {})
-        click.secho(
-            f"[API2GN] Contenu cfg = {cfg}",
-            fg="red",
-            bold=True
-        )
+        # --- Limite -----------------------------------------------------
+        self.max_data = int(cfg.get("plantnet_max_data", 1000))
+        self.max_data = min(max(self.max_data, 1), 1000)
 
-
-        # ------------------------------------------------------------------
-        # LIMITE MAX DE DONNÉES
-        # ------------------------------------------------------------------
-        self.max_data = cfg.get("plantnet_max_data", 1000)
-
-        try:
-            self.max_data = int(self.max_data)
-        except Exception:
-            self.max_data = 1000
-
-        if self.max_data <= 0 or self.max_data > 1000:
-            click.secho(
-                "[PlantNet] ⚠ Nombre maximum d'import = 1000. "
-                "Traitement limité à 1000 occurrences.",
-                fg="yellow",
-                bold=True
-            )
-            self.max_data = 1000
-
-        # --------------- Taxref Mode --------------------------------------
+        # --- Taxref -----------------------------------------------------
         self.taxref_mode = cfg.get("plantnet_taxref_mode", "strict")
 
-        if self.taxref_mode not in ("strict", "permissif"):
-            click.secho(
-                f"[API2GN] ⚠ plantnet_taxref_mode invalide ({self.taxref_mode}) → strict",
-                fg="yellow",
-            )
-            self.taxref_mode = "strict"
-
-
-        # ------------------------------------------------------------------
-        # 2) DEFAULT SPECIES
-        # ------------------------------------------------------------------
+        # --- Espèces ---------------------------------------------------
         if cfg.get("plantnet_empty_species_list", False):
-            species = []
+            self.scientific_names = []
         else:
-            species = cfg.get("list_species", [])
-        if not species:
-            click.secho(
-            "[PlantNet] ⚠ ATTENTION : aucun filtre sur les espèces.\n"
-            "→ Toutes les observations de taxons seront importées.\n"
-            "→ Vérifiez la configuration avant de lancer l'import.",
-            fg="yellow",
-            bold=True
-        )
+            self.scientific_names = cfg.get("list_species", [])
 
-
-        # ------------------------------------------------------------------
-        # 3) GEOMETRY PAR DEFAUT
-        # ------------------------------------------------------------------
+        # --- Géométrie -------------------------------------------------
         geom_json = cfg.get("plantnet_geometry_coordinates_json", "[]")
         try:
             coords = json.loads(geom_json)
@@ -266,12 +211,13 @@ class PlantNetParser(JSONParser):
             "coordinates": coords,
         }
 
-        # ------------------------------------------------------------------
-        # 4) DATES PAR DÉFAUT
-        # ------------------------------------------------------------------
-        self.scientific_names = species
-        self.min_event_date = cfg.get("plantnet_min_event_date", None)
-        self.max_event_date = cfg.get("plantnet_max_event_date", None)
+        # --- Dates -----------------------------------------------------
+        self.min_event_date = cfg.get("plantnet_min_event_date")
+        self.max_event_date = cfg.get("plantnet_max_event_date")
+
+        # affichage de l'initialisation 
+        self.print_initial_summary()
+
 
         # ------------------------------------------------------------------
         # 5) MAPPING DYNAMIQUE (JSON string)
@@ -289,7 +235,10 @@ class PlantNetParser(JSONParser):
             "scientific_names": self.scientific_names,
             "min_event_date": self.min_event_date,
             "max_event_date": self.max_event_date,
+
+
         }
+
 
         super().__init__()
 
@@ -306,9 +255,6 @@ class PlantNetParser(JSONParser):
     # =============================================================================
     # AUTO CREATION METADATA GN
     # =============================================================================
-    
-
-
     def _auto_setup_metadata(self):
         # SOURCE
         row = db.session.execute(text("""
@@ -426,6 +372,37 @@ class PlantNetParser(JSONParser):
                 f"    ↳ sans cd_nom (mode {self.taxref_mode}) : {self.rejected_no_cd_nom}",
                 fg="yellow",
             )
+
+    def print_initial_summary(self):
+        click.secho(
+            "[PlantNet] Paramètres d'extraction :",
+            fg="cyan",
+            bold=True
+        )
+
+        click.secho(f"  ↳ URL API            : {self.url}", fg="cyan")
+        click.secho(f"  ↳ Mode TAXREF        : {self.taxref_mode}", fg="cyan")
+        click.secho(f"  ↳ Limite occurrences : {self.max_data}", fg="cyan")
+        click.secho(
+            f"  ↳ Dates              : {self.min_event_date} → {self.max_event_date}",
+            fg="cyan"
+        )
+
+        if self.scientific_names:
+            click.secho(
+            f"  ↳ Filtre espèces     : {len(self.scientific_names)} taxons",
+            fg="cyan"
+        )
+        for sp in self.scientific_names:
+            click.secho(f"      - {sp}", fg="cyan")
+
+        else:
+                    click.secho(
+                "  ⚠ Aucun filtre sur les espèces (import global)",
+                fg="yellow",
+                bold=True
+            )
+
 
 
     # =============================================================================

@@ -31,7 +31,7 @@ plantnet_api_key = "2b10IJGxpcJr54FjXELjEVJI1O"
 
 # Si true → liste vide → API non filtrée
 # Si false → utilise list_species
-plantnet_empty_species_list = true
+plantnet_empty_species_list = false
 
 # Dates minimales/maximales envoyées à l’API PlantNet
 plantnet_min_event_date = "2025-01-01"
