@@ -328,7 +328,7 @@ class PlantNetParser(JSONParser):
     def _call_api(self):
         click.secho(
             f"[PlantNet] Appel API (limit={self.max_data}, offset={self.offset})",
-            fg="blue"
+            fg="cyan"
         )
 
         resp = requests.post(
@@ -487,28 +487,24 @@ class PlantNetParser(JSONParser):
                     if cd_nom is None and self.taxref_mode == "strict":
                         self.rejected_rows += 1
                         self.rejected_no_cd_nom += 1
-
+                    
                         click.secho(
                             f"[PlantNet][REJET] Taxon rejeté (aucun cd_nom) : {row.get('scientificName')}",
                             fg="red"
                         )
-
+                    
                         continue
 
                     row["cd_nom"] = cd_nom
                     self.imported_rows += 1
                     yield row
 
-                # 🔁 Condition de fin d'extraction
+                # 🔁 Condition de poursuite
                 if nb_results < self.max_data:
                     break
 
                 # ➕ On décale l’offset
                 self.offset += self.max_data
-                click.secho(
-                            f"Offset mis a jour : {self.offset}",
-                            fg="red"
-                        )
                 if self.offset > 1_000_000:
                     click.secho(
                         "[PlantNet] ⚠ Arrêt de sécurité (offset trop élevé)",
