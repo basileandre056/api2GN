@@ -359,12 +359,12 @@ class PlantNetParser(JSONParser):
         click.secho(f"✖ Occurrences rejetées      : {self.rejected_rows}", fg="red")
 
         click.secho(
-            f"✔ Occurrences validées TAXREF local : {self.taxref_local_ok}",
+            f"✔ Taxons validés TAXREF local : {self.taxref_local_ok}",
             fg="green"
         )
 
         click.secho(
-            f"✔ Occurrences validés TAXREF LD    : {self.taxref_ld_ok}",
+            f"✔ Taxons validés TAXREF LD    : {self.taxref_ld_ok}",
             fg="green"
         )
 
