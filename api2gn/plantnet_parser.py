@@ -197,6 +197,14 @@ class PlantNetParser(JSONParser):
         self.url = cfg.get("plantnet_api_url", "")
         self.API_KEY = cfg.get("plantnet_api_key", "")
 
+        cfg = gn_config.get("API2GN", {})
+        click.secho(
+            f"[API2GN] Contenu cfg = {cfg}",
+            fg="red",
+            bold=True
+        )
+
+
         # ------------------------------------------------------------------
         # LIMITE MAX DE DONNÉES
         # ------------------------------------------------------------------
