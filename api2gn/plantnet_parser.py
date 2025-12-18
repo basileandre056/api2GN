@@ -421,6 +421,7 @@ class PlantNetParser(JSONParser):
         if not sci:
             return None
 
+        # Cache
         if sci in _CD_NOM_CACHE:
             return _CD_NOM_CACHE[sci]
 
@@ -430,6 +431,12 @@ class PlantNetParser(JSONParser):
             _CD_NOM_CACHE[sci] = cd
             self.taxref_local_ok += 1
             return cd
+
+        # ⬇️ LOG ICI (et seulement ici)
+        click.secho(
+            f"[PlantNet][TAXREF] Aucun TAXREF local → fallback LD : {sci}",
+            fg="yellow"
+        )
 
         # 2) TAXREF-LD
         cd_ld = resolve_cd_nom_taxref_ld(sci)
@@ -444,6 +451,7 @@ class PlantNetParser(JSONParser):
 
         _CD_NOM_CACHE[sci] = None
         return None
+
 
 
     def next_row(self):
@@ -479,6 +487,12 @@ class PlantNetParser(JSONParser):
                     if cd_nom is None and self.taxref_mode == "strict":
                         self.rejected_rows += 1
                         self.rejected_no_cd_nom += 1
+                    
+                        click.secho(
+                            f"[PlantNet][REJET] Taxon rejeté (aucun cd_nom) : {row.get('scientificName')}",
+                            fg="red"
+                        )
+                    
                         continue
 
                     row["cd_nom"] = cd_nom
