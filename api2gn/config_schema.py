@@ -28,41 +28,49 @@ class Api2GNSchema(Schema):
     # --------------------------------------------------
     # 🔹 CONFIG PLANTNET (BACKEND UNIQUEMENT)
     # --------------------------------------------------
+    
     plantnet_api_url = fields.String(
         required=False, allow_none=True
     )
-
+    
     plantnet_api_key = fields.String(
         required=False, allow_none=True
     )
-
+    
+    plantnet_taxref_mode = fields.String(
+        required=False, missing="strict"
+    )
+    
+    plantnet_max_data = fields.Integer(
+        required=False, missing=1000
+    )
+    
     plantnet_empty_species_list = fields.Boolean(
         required=False, missing=False
     )
-
-    plantnet_min_event_date = fields.String(
-        required=False, allow_none=True
-    )
-
-    plantnet_max_event_date = fields.String(
-        required=False, allow_none=True
-    )
-
-    plantnet_geometry_type = fields.String(
-        required=False, missing="Polygon"
-    )
-
-    plantnet_geometry_coordinates_json = fields.String(
-        required=False, allow_none=True
-    )
-
-    example_species = fields.List(
+    
+    list_species = fields.List(
         fields.String(),
         required=False,
         missing=list
     )
-
+    
+    plantnet_min_event_date = fields.String(
+        required=False, allow_none=True
+    )
+    
+    plantnet_max_event_date = fields.String(
+        required=False, allow_none=True
+    )
+    
+    plantnet_geometry_type = fields.String(
+        required=False, missing="Polygon"
+    )
+    
+    plantnet_geometry_coordinates_json = fields.String(
+        required=False, allow_none=True
+    )
+    
     plantnet_mapping_json = fields.String(
-        required=False,
-        allow_none=True
+        required=False, allow_none=True
     )
