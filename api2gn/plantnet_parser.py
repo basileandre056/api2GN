@@ -18,6 +18,27 @@ from geonature.core.gn_meta.models import TDatasets, TAcquisitionFramework
 from api2gn.parsers import JSONParser
 
 
+
+# =============================================================================
+# DEFAULT CONFIG (fallback si API2GN absente ou incomplète)
+# =============================================================================
+
+DEFAULT_CONFIG = {
+    "plantnet_api_url": "https://my-api.plantnet.org/v3/dwc/occurrence/search",
+    "plantnet_api_key": None,  # volontairement None
+    "plantnet_taxref_mode": "strict",
+    "plantnet_max_data": 1000,
+    "plantnet_empty_species_list": True,
+    "list_species": [],
+    "plantnet_min_event_date": None,
+    "plantnet_max_event_date": None,
+    "plantnet_geometry_type": "Polygon",
+    "plantnet_geometry_coordinates_json": None,
+    "plantnet_mapping_json": "{}",
+}
+
+
+
 # =============================================================================
 # TAXREF RESOLUTION (optimisée + cache)
 # =============================================================================
@@ -66,38 +87,6 @@ def resolve_cd_nom_taxref_ld(name: str) -> Optional[int]:
     return None
 
 
-def _resolve_cd_nom(row):
-    sci = row.get("scientificName")
-    if not sci:
-        return None
-
-    if sci in _CD_NOM_CACHE:
-        return _CD_NOM_CACHE[sci]
-
-    # 1) Local
-    cd = resolve_cd_nom_local(sci)
-    if cd:
-        _CD_NOM_CACHE[sci] = cd
-        return cd
-
-    click.secho(f"[PlantNet] Aucun TAXREF local pour '{sci}' → fallback LD", fg="yellow")
-
-    # 2) TAXREF-LD
-    cd_ld = resolve_cd_nom_taxref_ld(sci)
-    if cd_ld:
-        exists = db.session.scalar(select(Taxref.cd_nom).where(Taxref.cd_nom == cd_ld))
-        if exists:
-            _CD_NOM_CACHE[sci] = cd_ld
-            return cd_ld
-
-        click.secho(
-            f"[TAXREF-LD] cd_nom={cd_ld} trouvé mais ABSENT en base locale",
-            fg="red"
-        )
-
-    _CD_NOM_CACHE[sci] = None
-    return None
-
 
 # =============================================================================
 # BASIS OF RECORD NORMALISATION
@@ -118,19 +107,18 @@ BASIS_OF_RECORD_MAP = {
 def load_api2gn_config():
     cfg = gn_config.get("API2GN")
 
-    if cfg is None:
-        raise click.ClickException(
-            "[API2GN] ❌ Aucune configuration API2GN chargée"
+    if not cfg:
+        click.secho(
+            "[API2GN] ⚠ Aucune config GeoNature → utilisation des valeurs par défaut",
+            fg="yellow"
         )
+        return DEFAULT_CONFIG.copy()
 
-    click.secho("[API2GN] Configuration API2GN chargée", fg="cyan", bold=True)
+    # merge defaults + config
+    merged = DEFAULT_CONFIG.copy()
+    merged.update(cfg)
 
-    click.secho("[API2GN] Clés disponibles :", fg="cyan")
-    for k in sorted(cfg.keys()):
-        click.secho(f"  - {k}", fg="cyan")
-
-    return cfg
-
+    return merged
 
 
 
@@ -183,65 +171,65 @@ class PlantNetParser(JSONParser):
         self.imported_rows = 0
         self.rejected_rows = 0
         self.rejected_no_cd_nom = 0
+        self.taxref_local_ok = 0
+        self.taxref_ld_ok = 0
+
 
         self.root = None
 
         cfg = load_api2gn_config()
 
-        click.secho("\n[API2GN] === VALEURS BRUTES DE CONFIG ===", fg="yellow", bold=True)
-        for k, v in cfg.items():
-            click.secho(f"{k:<35} = {repr(v)} ({type(v).__name__})", fg="yellow")
-        click.secho("======================================\n", fg="yellow", bold=True)
-
-
-        # --- API --------------------------------------------------------
         self.url = cfg["plantnet_api_url"]
         self.API_KEY = cfg["plantnet_api_key"]
 
-        # --- Limite -----------------------------------------------------
-        self.max_data = int(cfg["plantnet_max_data"])
+        if not self.API_KEY:
+            raise click.ClickException(
+                "[PlantNet] ❌ API KEY absente (plantnet_api_key)"
+            )
 
-        # --- Taxref -----------------------------------------------------
+        self.max_data = int(cfg["plantnet_max_data"])
         self.taxref_mode = cfg["plantnet_taxref_mode"]
 
-        click.secho(
-            f"[TRACE] Avant calcul espèces : empty={cfg['plantnet_empty_species_list']} "
-            f"list_species={cfg.get('list_species')}",
-            fg="red",
-            bold=True
-        )
-
-
-        # --- Espèces ---------------------------------------------------
         self.empty_species = cfg["plantnet_empty_species_list"]
         self.scientific_names = [] if self.empty_species else cfg["list_species"]
 
-        # --- Géométrie -------------------------------------------------
         self.geometry_type = cfg["plantnet_geometry_type"]
-        self.geometry_coordinates = json.loads(
-            cfg["plantnet_geometry_coordinates_json"]
+
+        if cfg["plantnet_geometry_coordinates_json"]:
+            self.geometry_coordinates = json.loads(
+                cfg["plantnet_geometry_coordinates_json"]
+            )
+        else:
+            self.geometry_coordinates = None
+
+        self.geometry = (
+            {
+                "type": self.geometry_type,
+                "coordinates": self.geometry_coordinates,
+            }
+            if self.geometry_coordinates
+            else None
         )
 
-        self.geometry = {
-            "type": self.geometry_type,
-            "coordinates": self.geometry_coordinates,
-        }
-
-        # --- Dates -----------------------------------------------------
+        # dates
         self.min_event_date = cfg["plantnet_min_event_date"]
         self.max_event_date = cfg["plantnet_max_event_date"]
 
-        # --- Mapping ---------------------------------------------------
+        # mapping dynamique
         self.mapping = json.loads(cfg["plantnet_mapping_json"])
 
-                # backup defaults for runtime override
+
+        # backup defaults for runtime override
         self._defaults = {
-                    "geometry": self.geometry,
-                    "scientific_names": self.scientific_names,
-                    "min_event_date": self.min_event_date,
-                    "max_event_date": self.max_event_date,
+            "geometry": self.geometry,
+            "scientific_names": self.scientific_names,
+            "min_event_date": self.min_event_date,
+            "max_event_date": self.max_event_date,
 
         }
+
+        self.print_initial_summary()
+
 
         super().__init__()
 
@@ -364,77 +352,56 @@ class PlantNetParser(JSONParser):
     def print_summary(self):
         if self.dry_run:
             return
+
         click.secho("\n[PlantNet] Résumé de l'import :", fg="cyan")
-        click.secho(f"  ↳ Offset final atteint : {self.offset}",fg="cyan")
 
-        click.secho(f"  ✔ Importées : {self.imported_rows}", fg="green")
-        click.secho(f"  ✖ Rejetées  : {self.rejected_rows}", fg="red")
+        click.secho(f"✔ Occurrences importées     : {self.imported_rows}", fg="green")
+        click.secho(f"✖ Occurrences rejetées      : {self.rejected_rows}", fg="red")
 
-        if self.rejected_no_cd_nom:
-            click.secho(
-                f"    ↳ sans cd_nom (mode {self.taxref_mode}) : {self.rejected_no_cd_nom}",
-                fg="yellow",
-            )
+        click.secho(
+            f"✔ Occurrences validées TAXREF local : {self.taxref_local_ok}",
+            fg="green"
+        )
+
+        click.secho(
+            f"✔ Occurrences validés TAXREF LD    : {self.taxref_ld_ok}",
+            fg="green"
+        )
+
 
     def print_initial_summary(self):
-        click.secho(
-            "\n[PlantNet] === CONFIGURATION EFFECTIVE CHARGÉE ===",
-            fg="cyan",
-            bold=True
-        )
+        click.secho("\n[PlantNet] Paramètres effectifs :", fg="cyan", bold=True)
 
-        click.secho(f"URL API                  : {self.url}", fg="cyan")
-        click.secho(f"API KEY présente         : {bool(self.API_KEY)}", fg="cyan")
-        click.secho(f"Mode TAXREF              : {self.taxref_mode}", fg="cyan")
-        click.secho(f"Limite max_data          : {self.max_data}", fg="cyan")
+        click.secho(f"URL API            : {self.url}", fg="cyan")
+        click.secho(f"API KEY présente   : {bool(self.API_KEY)}", fg="cyan")
+        click.secho(f"Mode TAXREF        : {self.taxref_mode}", fg="cyan")
+        click.secho(f"Max data           : {self.max_data}", fg="cyan")
 
         click.secho(
-            f"Dates                    : {self.min_event_date} → {self.max_event_date}",
+            f"Dates              : {self.min_event_date} → {self.max_event_date}",
             fg="cyan"
         )
 
-        click.secho(f"Geometry type            : {self.geometry_type}", fg="cyan")
-        click.secho(
-            f"Geometry points          : {len(self.geometry_coordinates[0])}",
-            fg="cyan"
-        )
-
-        click.secho(
-            f"plantnet_empty_species   : {self.empty_species}",
-            fg="cyan"
-        )
-
-        click.secho(
-            f"list_species (brut)      : {self.scientific_names}",
-            fg="red",
-            bold=True
-        )
+        if self.geometry:
+            click.secho(
+                f"Géométrie          : {self.geometry_type} "
+                f"({len(self.geometry_coordinates[0])} points)",
+                fg="cyan"
+            )
+        else:
+            click.secho("Géométrie          : Aucune", fg="yellow")
 
         if self.scientific_names:
             click.secho(
-                f"Filtre espèces actif     : {len(self.scientific_names)} taxons",
-                fg="green",
-                bold=True
+                f"Filtre espèces     : {len(self.scientific_names)} taxons",
+                fg="cyan"
             )
-            for sp in self.scientific_names:
-                click.secho(f"  - {sp}", fg="green")
         else:
             click.secho(
-                "⚠ AUCUN FILTRE ESPÈCE → IMPORT GLOBAL",
-                fg="yellow",
-                bold=True
+                "Filtre espèces     : aucun (import global)",
+                fg="yellow"
             )
 
-        click.secho(
-            f"Mapping JSON             : {self.mapping}",
-            fg="cyan"
-        )
-
-        click.secho(
-            "=================================================\n",
-            fg="cyan",
-            bold=True
-        )
 
 
     # =============================================================================
@@ -447,6 +414,37 @@ class PlantNetParser(JSONParser):
         if lat is None or lon is None:
             return None
         return from_shape(Point(lon, lat), srid=self.srid)
+    
+
+    def _resolve_cd_nom(self, row):
+        sci = row.get("scientificName")
+        if not sci:
+            return None
+
+        if sci in _CD_NOM_CACHE:
+            return _CD_NOM_CACHE[sci]
+
+        # 1) TAXREF local
+        cd = resolve_cd_nom_local(sci)
+        if cd:
+            _CD_NOM_CACHE[sci] = cd
+            self.taxref_local_ok += 1
+            return cd
+
+        # 2) TAXREF-LD
+        cd_ld = resolve_cd_nom_taxref_ld(sci)
+        if cd_ld:
+            exists = db.session.scalar(
+                select(Taxref.cd_nom).where(Taxref.cd_nom == cd_ld)
+            )
+            if exists:
+                _CD_NOM_CACHE[sci] = cd_ld
+                self.taxref_ld_ok += 1
+                return cd_ld
+
+        _CD_NOM_CACHE[sci] = None
+        return None
+
 
     def next_row(self):
         try:
@@ -476,7 +474,7 @@ class PlantNetParser(JSONParser):
                         "basisOfRecord_norm": bor_norm,
                     }
 
-                    cd_nom = _resolve_cd_nom(row)
+                    cd_nom = self._resolve_cd_nom(row)
 
                     if cd_nom is None and self.taxref_mode == "strict":
                         self.rejected_rows += 1
