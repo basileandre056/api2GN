@@ -58,7 +58,38 @@ Le pipeline de résolution fonctionne ainsi :
 
 ➡️ Cette partie est robuste et optimise énormément les performances.
 
+
 ------------------------------------------------------------------------
+## 📊 Journalisation et statistiques d'import
+
+Le parser affiche :
+
+- les **paramètres effectifs chargés** (API, géométrie, dates, mode TAXREF),
+- chaque tentative de résolution TAXREF échouée,
+- les **taxons rejetés** (en mode strict),
+- un résumé final structuré.
+
+### Exemple de logs
+
+```text
+[PlantNet] Paramètres effectifs :
+URL API            : https://my-api.plantnet.org/v3/dwc/occurrence/search
+Mode TAXREF        : strict
+Filtre espèces     : aucun (import global)
+
+[PlantNet][REJET] Taxon rejeté (aucun cd_nom) : Alsophila (borbonica ?)
+
+[PlantNet] Résumé de l'import :
+✔ Occurrences importées     : 114
+✖ Occurrences rejetées      : 10
+✔ Taxons validés TAXREF local : 96
+✔ Taxons validés TAXREF LD    : 0
+
+
+------------------------------------------------------------------------
+
+
+
 
 ## 🗺 Gestion des géométries
 

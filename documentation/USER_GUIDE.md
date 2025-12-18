@@ -57,6 +57,38 @@ Si le taxon :
 
 ---
 
+
+### ❌ Taxons rejetés
+
+Lorsqu’un taxon ne peut pas être résolu :
+
+- ni dans TAXREF local,
+- ni via TAXREF-LD,
+
+il est **explicitement rejeté** en mode strict.
+
+Exemple :
+
+```text
+[PlantNet][REJET] Taxon rejeté (aucun cd_nom) : Alsophila (borbonica ?)
+
+```
+
+Cela permet :
+
+d’identifier les taxons absents ou mal orthographiés,
+
+de décider d’une mise à jour TAXREF,
+
+ou d’un ajustement du périmètre d’import.
+
+
+
+---
+
+
+
+
 ## 2. Utilisation du fichier de configuration TOML
 
 Le parser **PLANTNET_REUNION** est entièrement piloté par un fichier TOML,
@@ -109,17 +141,17 @@ Les dates sont appliquées côté API Pl@ntNet.
 ---
 
 
-### 2.4 Pagination
+### Pagination
+
+La pagination est gérée automatiquement via le paramètre :
 
 ```toml
-# Nombre de pages PlantNet à importer
-# 1 = 100 résultats
-# 2 = 200 résultats
-# null ou absent = 1 page 
-
-plantnet_pages = 5
-
+plantnet_max_data = 1000
 ```
+
+Chaque appel API récupère jusqu’à plantnet_max_data occurrences,
+et le parser poursuit tant que des résultats sont disponibles, en incrémentant l'offset afin d'obtenir les résultats suivant.
+
 
 ---
 
@@ -169,3 +201,11 @@ plantnet_geometry_coordinates_json = """
 """
 
 ```
+
+## 🧾 État actuel du parser (2025)
+
+- ✔ Configuration fallback automatique
+- ✔ Logs TAXREF détaillés
+- ✔ Comptage TAXREF local / LD
+- ✔ Logs explicites des taxons rejetés
+- ✔ Import robuste même sans config TOML

@@ -43,24 +43,32 @@ Construit une instance `Synthese` :
 
 ---
 
-# 3. Résolution du `cd_nom`
+## 3. Résolution du `cd_nom`
 
-## Normalisation :
+La résolution TAXREF suit le pipeline suivant :
+
+1. Cache mémoire (`_CD_NOM_CACHE`)
+2. Normalisation botanique :
 ```
 "Thunbergia fragrans Roxb." → "Thunbergia fragrans"
 ```
 
-## Recherche :
-1. TAXREF local → via SQLAlchemy + nom simplifié
-2. TAXREF-LD → API en ligne
-3. Vérification que le cd_nom LD existe bien en base
-4. Mise en cache `_CD_NOM_CACHE`
+3. Recherche dans **TAXREF local**
+4. Fallback vers **TAXREF-LD (API MNHN)**
+5. Vérification de l’existence du `cd_nom` en base locale
+6. Comptabilisation :
+- `taxref_local_ok`
+- `taxref_ld_ok`
+7. En cas d’échec :
+- rejet si `plantnet_taxref_mode = strict`
+- log explicite du taxon rejeté
 
-⚠️ Si aucun taxon trouvé : l’observation peut être importée sans cd_nom.
+Le cache empêche toute requête répétée sur un même taxon.
+
 
 ---
 
-# 4. Géométrie et projections
+# 4.1. Géométrie et projections
 
 Input : (lon, lat) en WGS84 (4326)
 
@@ -80,6 +88,21 @@ puis :
 ```python
 self.fill_dict_with_geom()
 ```
+## 4.b Configuration fallback (résilience)
+
+Si la configuration API2GN est absente ou incomplète dans GeoNature :
+
+- le parser utilise automatiquement un dictionnaire de **valeurs par défaut** ;
+- l’import reste fonctionnel (hors clé API obligatoire) ;
+- un message d’avertissement est affiché.
+
+Cela garantit :
+- une meilleure robustesse en production,
+- une facilité de test et de développement.
+
+
+
+
 
 ---
 
