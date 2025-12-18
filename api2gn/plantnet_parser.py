@@ -116,15 +116,21 @@ BASIS_OF_RECORD_MAP = {
 }
 
 def load_api2gn_config():
-    cfg = gn_config.get("API2GN", {})
-    if not cfg:
-        click.secho(
-            "[API2GN] ⚠ Aucune configuration chargée (api2gn_config.toml absent).",
-            fg="yellow"
+    cfg = gn_config.get("API2GN")
+
+    if cfg is None:
+        raise click.ClickException(
+            "[API2GN] ❌ Aucune configuration API2GN chargée"
         )
-    else:
-        click.secho("[API2GN] Configuration chargée", fg="cyan", bold=True)
+
+    click.secho("[API2GN] Configuration API2GN chargée", fg="cyan", bold=True)
+
+    click.secho("[API2GN] Clés disponibles :", fg="cyan")
+    for k in sorted(cfg.keys()):
+        click.secho(f"  - {k}", fg="cyan")
+
     return cfg
+
 
 
 
@@ -183,63 +189,46 @@ class PlantNetParser(JSONParser):
         cfg = load_api2gn_config()
 
         # --- API --------------------------------------------------------
-        self.url = cfg.get("plantnet_api_url")
-        self.API_KEY = cfg.get("plantnet_api_key")
+        self.url = cfg["plantnet_api_url"]
+        self.API_KEY = cfg["plantnet_api_key"]
 
         # --- Limite -----------------------------------------------------
-        self.max_data = int(cfg.get("plantnet_max_data", 1000))
-        self.max_data = min(max(self.max_data, 1), 1000)
+        self.max_data = int(cfg["plantnet_max_data"])
 
         # --- Taxref -----------------------------------------------------
-        self.taxref_mode = cfg.get("plantnet_taxref_mode", "strict")
+        self.taxref_mode = cfg["plantnet_taxref_mode"]
 
         # --- Espèces ---------------------------------------------------
-        if cfg.get("plantnet_empty_species_list", False):
-            self.scientific_names = []
-        else:
-            self.scientific_names = cfg.get("list_species", [])
+        self.empty_species = cfg["plantnet_empty_species_list"]
+        self.scientific_names = [] if self.empty_species else cfg["list_species"]
 
         # --- Géométrie -------------------------------------------------
-        geom_json = cfg.get("plantnet_geometry_coordinates_json", "[]")
-        try:
-            coords = json.loads(geom_json)
-        except Exception:
-            coords = []
+        self.geometry_type = cfg["plantnet_geometry_type"]
+        self.geometry_coordinates = json.loads(
+            cfg["plantnet_geometry_coordinates_json"]
+        )
 
         self.geometry = {
-            "type": cfg.get("plantnet_geometry_type", "Polygon"),
-            "coordinates": coords,
+            "type": self.geometry_type,
+            "coordinates": self.geometry_coordinates,
         }
 
         # --- Dates -----------------------------------------------------
-        self.min_event_date = cfg.get("plantnet_min_event_date")
-        self.max_event_date = cfg.get("plantnet_max_event_date")
+        self.min_event_date = cfg["plantnet_min_event_date"]
+        self.max_event_date = cfg["plantnet_max_event_date"]
 
-        # affichage de l'initialisation 
-        self.print_initial_summary()
+        # --- Mapping ---------------------------------------------------
+        self.mapping = json.loads(cfg["plantnet_mapping_json"])
 
-
-        # ------------------------------------------------------------------
-        # 5) MAPPING DYNAMIQUE (JSON string)
-        # ------------------------------------------------------------------
-        mapping_json = cfg.get("plantnet_mapping_json", "{}")
-        try:
-            self.mapping = json.loads(mapping_json)
-        except Exception:
-            click.secho("[API2GN] ⚠ Erreur parsing mapping_json", fg="red")
-            self.mapping = {}
-
-        # backup defaults for runtime override
+                # backup defaults for runtime override
         self._defaults = {
-            "geometry": self.geometry,
-            "scientific_names": self.scientific_names,
-            "min_event_date": self.min_event_date,
-            "max_event_date": self.max_event_date,
-
+                    "geometry": self.geometry,
+                    "scientific_names": self.scientific_names,
+                    "min_event_date": self.min_event_date,
+                    "max_event_date": self.max_event_date,
 
         }
-
-
+        
         super().__init__()
 
         # override with runtime args
@@ -375,40 +364,63 @@ class PlantNetParser(JSONParser):
 
     def print_initial_summary(self):
         click.secho(
-            "[PlantNet] Paramètres d'extraction :",
+            "\n[PlantNet] === CONFIGURATION EFFECTIVE CHARGÉE ===",
             fg="cyan",
             bold=True
         )
 
+        click.secho(f"URL API                  : {self.url}", fg="cyan")
+        click.secho(f"API KEY présente         : {bool(self.API_KEY)}", fg="cyan")
+        click.secho(f"Mode TAXREF              : {self.taxref_mode}", fg="cyan")
+        click.secho(f"Limite max_data          : {self.max_data}", fg="cyan")
+
         click.secho(
-        f"[DEBUG] cfg.list_species = {self.scientific_names}",
-        fg="red",
-        bold=True
+            f"Dates                    : {self.min_event_date} → {self.max_event_date}",
+            fg="cyan"
         )
 
-        click.secho(f"  ↳ URL API            : {self.url}", fg="cyan")
-        click.secho(f"  ↳ Mode TAXREF        : {self.taxref_mode}", fg="cyan")
-        click.secho(f"  ↳ Limite occurrences : {self.max_data}", fg="cyan")
+        click.secho(f"Geometry type            : {self.geometry_type}", fg="cyan")
         click.secho(
-            f"  ↳ Dates              : {self.min_event_date} → {self.max_event_date}",
+            f"Geometry points          : {len(self.geometry_coordinates[0])}",
             fg="cyan"
+        )
+
+        click.secho(
+            f"plantnet_empty_species   : {self.empty_species}",
+            fg="cyan"
+        )
+
+        click.secho(
+            f"list_species (brut)      : {self.scientific_names}",
+            fg="red",
+            bold=True
         )
 
         if self.scientific_names:
             click.secho(
-            f"  ↳ Filtre espèces     : {len(self.scientific_names)} taxons",
-            fg="cyan"
-        )
-        for sp in self.scientific_names:
-            click.secho(f"      - {sp}", fg="cyan")
-
+                f"Filtre espèces actif     : {len(self.scientific_names)} taxons",
+                fg="green",
+                bold=True
+            )
+            for sp in self.scientific_names:
+                click.secho(f"  - {sp}", fg="green")
         else:
-                    click.secho(
-                "  ⚠ Aucun filtre sur les espèces (import global)",
+            click.secho(
+                "⚠ AUCUN FILTRE ESPÈCE → IMPORT GLOBAL",
                 fg="yellow",
                 bold=True
             )
 
+        click.secho(
+            f"Mapping JSON             : {self.mapping}",
+            fg="cyan"
+        )
+
+        click.secho(
+            "=================================================\n",
+            fg="cyan",
+            bold=True
+        )
 
 
     # =============================================================================
