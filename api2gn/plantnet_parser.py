@@ -22,15 +22,7 @@ from api2gn.parsers import JSONParser
 # CONFIGURATION API2GN – Chargée exactement comme Quadrige
 # =============================================================================
 
-def load_api2gn_config():
-    cfg = gn_config.get("API2GN")
-    if not cfg:
-        click.secho(
-            "[API2GN] ⚠ Aucune configuration chargée (api2gn_config.toml absent).",
-            fg="yellow"
-        )
-        return {}
-    return cfg
+
 
 
 
@@ -131,6 +123,19 @@ BASIS_OF_RECORD_MAP = {
     "photo": "HUMAN_OBSERVATION",
     "image": "MACHINE_OBSERVATION",
 }
+
+def load_api2gn_config():
+    cfg = gn_config.get("API2GN")
+    click.secho(f"[API2GN] gn_config keys = {list(gn_config.keys())}", fg="cyan")
+
+    if not cfg:
+        click.secho(
+            "[API2GN] ⚠ Aucune configuration chargée (api2gn_config.toml absent).",
+            fg="yellow"
+        )
+        return {}
+    return cfg
+
 
 
 def _build_observers(row):
