@@ -188,6 +188,12 @@ class PlantNetParser(JSONParser):
 
         cfg = load_api2gn_config()
 
+        click.secho("\n[API2GN] === VALEURS BRUTES DE CONFIG ===", fg="yellow", bold=True)
+        for k, v in cfg.items():
+            click.secho(f"{k:<35} = {repr(v)} ({type(v).__name__})", fg="yellow")
+        click.secho("======================================\n", fg="yellow", bold=True)
+
+
         # --- API --------------------------------------------------------
         self.url = cfg["plantnet_api_url"]
         self.API_KEY = cfg["plantnet_api_key"]
@@ -197,6 +203,14 @@ class PlantNetParser(JSONParser):
 
         # --- Taxref -----------------------------------------------------
         self.taxref_mode = cfg["plantnet_taxref_mode"]
+
+        click.secho(
+            f"[TRACE] Avant calcul espèces : empty={cfg['plantnet_empty_species_list']} "
+            f"list_species={cfg.get('list_species')}",
+            fg="red",
+            bold=True
+        )
+
 
         # --- Espèces ---------------------------------------------------
         self.empty_species = cfg["plantnet_empty_species_list"]
@@ -228,7 +242,7 @@ class PlantNetParser(JSONParser):
                     "max_event_date": self.max_event_date,
 
         }
-        
+
         super().__init__()
 
         # override with runtime args
