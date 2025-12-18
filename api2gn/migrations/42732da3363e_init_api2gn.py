@@ -1,7 +1,8 @@
 """init api2gn
 
-Revision ID: 5b334b77f5f5
-Revises: 830cc8f4daef
+Revision ID: 42732da3363e
+Revises:
+
 Create Date: 2021-09-21 13:22:45.003976
 
 """
@@ -19,7 +20,7 @@ depends_on = None
 def upgrade():
     op.execute(
         """
-            CREATE SCHEMA api2gn;
+            CREATE SCHEMA IF NOT EXISTS api2gn;
             CREATE TABLE api2gn.parser (
                 id SERIAL NOT NULL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,

@@ -37,7 +37,11 @@ def upgrade():
     # 3) Créer les permissions sans doublon
     op.execute("""
         INSERT INTO gn_permissions.t_permissions_available (
-            id_module, id_object, id_action, scope_filter, label
+            id_module, 
+            id_object, 
+            id_action, 
+            scope_filter, 
+            label
         )
         SELECT
             m.id_module,
@@ -47,16 +51,17 @@ def upgrade():
             v.label
         FROM (
             VALUES
-                ('API2GN', 'PARSER', 'R', False, 'Voir les parsers'),
-                ('API2GN', 'PARSER', 'U', False, 'Modifier les parser'),
-                ('API2GN', 'PARSER', 'C', False, 'Créer des parser'),
-                ('API2GN', 'PARSER', 'D', False, 'Supprimer des parsers')
+                ('API2GN', 'ALL', 'R', false, 'Voir les parsers'),
+                ('API2GN', 'ALL', 'U', false, 'Modifier les parser'),
+                ('API2GN', 'ALL', 'C', false, 'Créer des parser'),
+                ('API2GN', 'ALL', 'D', false, 'Supprimer des parsers')
         ) AS v (module_code, object_code, action_code, scope_filter, label)
         JOIN gn_commons.t_modules m ON m.module_code = v.module_code
         JOIN gn_permissions.t_objects o ON o.code_object = v.object_code
         JOIN gn_permissions.bib_actions a ON a.code_action = v.action_code
         WHERE NOT EXISTS (
-            SELECT 1 FROM gn_permissions.t_permissions_available pa
+            SELECT 1 
+            FROM gn_permissions.t_permissions_available pa
             WHERE pa.id_module = m.id_module
             AND pa.id_object = o.id_object
             AND pa.id_action = a.id_action
