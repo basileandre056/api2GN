@@ -380,6 +380,12 @@ class PlantNetParser(JSONParser):
             bold=True
         )
 
+        click.secho(
+        f"[DEBUG] cfg.list_species = {self.scientific_names}",
+        fg="red",
+        bold=True
+        )
+
         click.secho(f"  ↳ URL API            : {self.url}", fg="cyan")
         click.secho(f"  ↳ Mode TAXREF        : {self.taxref_mode}", fg="cyan")
         click.secho(f"  ↳ Limite occurrences : {self.max_data}", fg="cyan")
